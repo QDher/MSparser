@@ -1,17 +1,27 @@
 # Builds the packaged application for Windows, macOS and Linux.
-# Run manually from the Actions tab, or push a tag such as v0.1.0.
+# - Manual start (Actions tab): the builds are kept as workflow artifacts.
+# - Push of a tag such as v0.1.0: the builds are also attached to the
+#   GitHub release of that tag (created as a pre-release if it does not exist).
 name: build-app
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+permissions:
+  contents: write
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - {os: windows-latest, label: windows-x64}
+          - {os: macos-latest, label: macos-arm64}
+          - {os: ubuntu-latest, label: linux-x64}
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -22,5 +32,14 @@ jobs:
       - run: pyinstaller --noconfirm packaging/mzstab.spec
       - uses: actions/upload-artifact@v4
         with:
-          name: mzstab-app-${{ matrix.os }}
+          name: mzstab-app-${{ matrix.label }}
           path: dist/mzstab-app
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python -c "import shutil; shutil.make_archive('mzstab-app-${{ matrix.label }}-${TAG}', 'zip', 'dist', 'mzstab-app')"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease --title "mzstab $TAG" --notes "Automated build." || true
+          gh release upload "$TAG" "mzstab-app-${{ matrix.label }}-${TAG}.zip" --clobber

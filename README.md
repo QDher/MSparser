@@ -23,8 +23,8 @@ hand: settings, components and samples are entered in forms and tables.
 
 **Option A: standalone application (no Python needed)**
 
-Download the folder for your system from the *Actions* tab of this repository
-(latest `build-app` run, *Artifacts* section), unzip it, and start
+Download the zip for your system from the
+[Releases](https://github.com/QDher/MSparser/releases) page, unzip it, and start
 `mzstab-app.exe` (Windows) or `mzstab-app` (macOS, Linux). A console window
 shows the log and the interface opens in the browser. Closing the console
 stops the program.
@@ -219,8 +219,9 @@ bash packaging/build.sh
 
 The result is the folder `dist/mzstab-app` (about 550 MB). The workflow
 `.github/workflows/build-app.yml` builds the three systems on GitHub Actions
-(manual start from the Actions tab, or on a `v*` tag). The vendor converters
-are not included.
+(manual start from the Actions tab, or on a `v*` tag). On a tag, the builds are
+attached to the GitHub release of that tag. The vendor converters are not
+included.
 
 ### Tests
 
