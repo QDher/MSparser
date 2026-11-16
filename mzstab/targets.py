@@ -1,0 +1,159 @@
+"""Target ion generation from user-entered components.
+
+Rules:
+- Formulas are neutral. The user lists the allowed charge states (+1, +2, -1, -2).
+- mode "proton": charge by gain/loss of H+.
+- mode "intrinsic": charge by electron removal/addition only; the component
+  also acts as a charge carrier for adducts with proton-mode molecules.
+- Adducts use entered intrinsic ions only. No default adducts, neutral losses,
+  radical ions, dimers or molecule-molecule combinations.
+"""
+from __future__ import annotations
+
+from collections import Counter
+from dataclasses import dataclass
+from itertools import combinations_with_replacement
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import yaml
+from molmass import ELECTRON, ELEMENTS, Formula
+
+ELECTRON_MASS = ELECTRON.mass
+
+
+@dataclass(frozen=True)
+class Component:
+    name: str
+    formula: str
+    charges: tuple[int, ...]
+    mode: str = "proton"
+
+    def composition(self) -> Counter:
+        f = Formula(self.formula)
+        if f.charge != 0:
+            raise ValueError(f"{self.name}: enter a neutral formula, charge is set separately")
+        comp = Counter()
+        for sym, item in f.composition().asdict().items():
+            if sym not in ELEMENTS:
+                raise ValueError(f"{self.name}: unsupported symbol '{sym}' in formula")
+            comp[sym] = int(item[0])
+        return comp
+
+
+def load_components(path: str | Path) -> list[Component]:
+    with open(path) as fh:
+        data = yaml.safe_load(fh)
+    comps, seen = [], set()
+    for d in data["components"]:
+        charges = tuple(int(c) for c in d.get("charges", []))
+        if any(c not in (-2, -1, 1, 2) for c in charges):
+            raise ValueError(f"{d['name']}: charges must be among -2, -1, +1, +2")
+        mode = d.get("mode", "proton")
+        if mode not in ("proton", "intrinsic"):
+            raise ValueError(f"{d['name']}: mode must be 'proton' or 'intrinsic'")
+        if d["name"] in seen:
+            raise ValueError(f"duplicate component name {d['name']}")
+        seen.add(d["name"])
+        comps.append(Component(str(d["name"]), str(d["formula"]), charges, mode))
+    return comps
+
+
+def _light_isotope(sym: str):
+    return max(ELEMENTS[sym].isotopes.values(), key=lambda i: i.abundance)
+
+
+def mono_mass(comp: Counter) -> float:
+    return sum(n * _light_isotope(s).mass for s, n in comp.items())
+
+
+def ion_mz(comp: Counter, z: int) -> float:
+    return (mono_mass(comp) - z * ELECTRON_MASS) / abs(z)
+
+
+def best_isotopologue(comp: Counter, z: int) -> tuple[float, float]:
+    """Most abundant single-substitution isotopologue: (m/z shift, ratio to monoisotopic)."""
+    best = (np.nan, np.nan)
+    for sym, n in comp.items():
+        if n <= 0:
+            continue
+        light = _light_isotope(sym)
+        for iso in ELEMENTS[sym].isotopes.values():
+            if iso.massnumber == light.massnumber or iso.abundance <= 0:
+                continue
+            ratio = n * iso.abundance / light.abundance
+            if not best[1] >= ratio:
+                best = ((iso.mass - light.mass) / abs(z), ratio)
+    return best
+
+
+def _charge_suffix(z: int) -> str:
+    return ("" if abs(z) == 1 else str(abs(z))) + ("+" if z > 0 else "-")
+
+
+def _label(parts: Counter, z: int) -> str:
+    s = "[M"
+    for (sign, name), n in parts.items():
+        s += sign + (str(n) if n > 1 else "") + name
+    return s + "]" + _charge_suffix(z)
+
+
+def generate_targets(components: list[Component]) -> pd.DataFrame:
+    intrinsic = [c for c in components if c.mode == "intrinsic"]
+    rows = []
+
+    def add(comp_name, ion, z, comp, requires):
+        shift, ratio = best_isotopologue(comp, z)
+        mz = ion_mz(comp, z)
+        rows.append(
+            dict(
+                target_id=f"{comp_name} {ion}", component=comp_name, ion=ion, charge=z,
+                mz=mz, iso_mz=mz + shift, iso_ratio=ratio,
+                requires=";".join(sorted(requires)), use=1,
+            )
+        )
+
+    for c in components:
+        base = c.composition()
+        if c.mode == "intrinsic":
+            for z in c.charges:
+                add(c.name, "[M]" + _charge_suffix(z), z, base, {c.name})
+            continue
+        for z in c.charges:
+            s = 1 if z > 0 else -1
+            # carriers: (label sign, label name, composition delta, charge, required component)
+            carriers = [("+" if s > 0 else "-", "H", Counter({"H": s}), s, None)]
+            for x in intrinsic:
+                for q in x.charges:
+                    if q * s > 0 and abs(q) <= abs(z):
+                        carriers.append(("+", x.formula, x.composition(), q, x.name))
+            for k in range(1, abs(z) + 1):
+                for combo in combinations_with_replacement(range(len(carriers)), k):
+                    if sum(carriers[i][3] for i in combo) != z:
+                        continue
+                    comp, parts, req = Counter(base), Counter(), {c.name}
+                    for i in combo:
+                        sign, name, delta, _, need = carriers[i]
+                        for sym, n in delta.items():
+                            comp[sym] += n
+                        parts[(sign, name)] += 1
+                        if need:
+                            req.add(need)
+                    if min(comp.values()) < 0:
+                        continue  # not enough H to remove
+                    add(c.name, _label(parts, z), z, comp, req)
+    df = pd.DataFrame(rows)
+    if df.empty:
+        raise ValueError("no targets generated: check charges of the components")
+    return df.sort_values(["component", "charge", "mz"]).reset_index(drop=True)
+
+
+def targets_for_file(targets: pd.DataFrame, injected: set[str] | None, polarity: int) -> pd.DataFrame:
+    """Targets applicable to one acquisition: confirmed, matching polarity, all
+    required components injected."""
+    t = targets[(targets["use"] == 1) & (np.sign(targets["charge"]) == polarity)]
+    if injected is not None:
+        ok = t["requires"].map(lambda r: set(r.split(";")) <= injected)
+        t = t[ok]
+    return t.reset_index(drop=True)

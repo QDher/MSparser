@@ -1,0 +1,23 @@
+[project]
+name = "mzstab"
+version = "0.1.0"
+description = "Signal stability and time-window selection in time-resolved m/z spectra (targeted)"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy", "pandas", "pyarrow", "scipy", "statsmodels", "matplotlib",
+  "pyteomics", "psims", "lxml", "ruptures", "molmass", "pyyaml",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+ui = ["streamlit"]
+
+[project.scripts]
+mzstab = "mzstab.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["mzstab"]

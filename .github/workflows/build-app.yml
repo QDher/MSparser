@@ -1,0 +1,26 @@
+# Builds the packaged application for Windows, macOS and Linux.
+# Run manually from the Actions tab, or push a tag such as v0.1.0.
+name: build-app
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ".[ui,test]" pyinstaller
+      - run: python -m pytest -q
+      - run: pyinstaller --noconfirm packaging/mzstab.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mzstab-app-${{ matrix.os }}
+          path: dist/mzstab-app

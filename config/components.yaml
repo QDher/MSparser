@@ -1,0 +1,6 @@
+# Formulas are entered neutral. charges: allowed charge states (+1, +2, -1, -2).
+# mode: proton    -> charge by gain/loss of H+
+#       intrinsic -> charge by electron removal/addition; also used as adduct carrier
+components:
+  - {name: caffeine, formula: C8H10N4O2, charges: [1, 2], mode: proton}
+  - {name: sodium, formula: Na, charges: [1], mode: intrinsic}

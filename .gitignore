@@ -1,0 +1,15 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.build-venv/
+/build/
+/dist/
+# data and results
+*.raw
+*.RAW
+*.mzML
+*.parquet
+/work*/
+/report*/
+/mzml*/
+/raw*/

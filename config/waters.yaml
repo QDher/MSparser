@@ -1,0 +1,24 @@
+# Waters TOF run. Paths are relative to this file.
+vendor: waters
+paths:
+  samples: samples.csv
+  components: components.yaml
+  raw_dir: ../raw_waters
+  mzml_dir: ../mzml_waters
+  work_dir: ../work_waters
+  report_dir: ../report_waters
+convert:
+  lockmass_mz: 556.2771       # leucine enkephalin [M+H]+; adjust to the reference used
+  lockmass_mz_neg: 554.2615
+  lockmass_tol_da: 0.5
+scan_filter:
+  functions: [1]              # excludes lock-mass and high-energy functions
+extraction:
+  ppm_windows: [25]           # starting value; check mass_error.png
+  min_window_mda: 2.0
+  saturation_intensity: null  # set to the detector saturation level
+resolution: {value: 20000, scaling: tof}
+windows:
+  lengths_s: [3, 5, 8, 10, 15, 20]
+  step_s: 1.0
+  min_scans: 8
