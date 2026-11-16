@@ -219,9 +219,9 @@ bash packaging/build.sh
 
 The result is the folder `dist/mzstab-app` (about 550 MB). The workflow
 `.github/workflows/build-app.yml` builds the three systems on GitHub Actions
-(manual start from the Actions tab, or on a `v*` tag). On a tag, the builds are
-attached to the GitHub release of that tag. The vendor converters are not
-included.
+when started from the Actions tab. To publish a release, enter a version tag
+(for example `v0.1.0`) in the *release_tag* field: the builds are then attached
+to the GitHub release of that tag. The vendor converters are not included.
 
 ### Tests
 

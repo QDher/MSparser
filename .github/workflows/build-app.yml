@@ -1,14 +1,24 @@
 # Builds the packaged application for Windows, macOS and Linux.
-# - Manual start (Actions tab): the builds are kept as workflow artifacts.
-# - Push of a tag such as v0.1.0: the builds are also attached to the
-#   GitHub release of that tag (created as a pre-release if it does not exist).
+#
+# Start it from the Actions tab ("Run workflow"):
+# - release_tag empty: the builds are kept as workflow artifacts only.
+# - release_tag set (for example v0.1.0): the builds are also attached to the
+#   GitHub release of that tag, which is created as a pre-release if needed.
+# Pushing a tag such as v0.1.0 has the same effect as setting release_tag.
 name: build-app
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Version tag to publish as a release (e.g. v0.1.0). Empty = build only."
+        required: false
+        default: ""
   push:
     tags: ["v*"]
 permissions:
   contents: write
+env:
+  TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
 jobs:
   build:
     strategy:
@@ -35,11 +45,12 @@ jobs:
           name: mzstab-app-${{ matrix.label }}
           path: dist/mzstab-app
       - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
         run: |
-          python -c "import shutil; shutil.make_archive('mzstab-app-${{ matrix.label }}-${TAG}', 'zip', 'dist', 'mzstab-app')"
-          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --prerelease --title "mzstab $TAG" --notes "Automated build." || true
-          gh release upload "$TAG" "mzstab-app-${{ matrix.label }}-${TAG}.zip" --clobber
+          ZIP="mzstab-app-${{ matrix.label }}-${TAG}"
+          python -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'dist', 'mzstab-app')" "$ZIP"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" \
+            --prerelease --title "mzstab $TAG" --notes-file packaging/release_notes.md || true
+          gh release upload "$TAG" "$ZIP.zip" --clobber
