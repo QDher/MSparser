@@ -1,92 +1,189 @@
 # mzstab
 
-Signal stability and time-window selection in time-resolved m/z spectra
-(targeted, absolute intensities, one independent run per vendor).
+Signal stability and time-window selection in time-resolved m/z spectra.
 
-## Install
+For each acquisition (about 30 s of scans, no chromatography), the program
+follows the ions of the injected components over time, determines whether the
+absolute intensity is stable, and recommends the time window that gives a
+stable signal: globally across all acquisitions, and per target ion.
 
-```bash
-pip install -e ".[test]"
+Thermo and Waters data are processed as separate, independent projects.
+
+## Overview
+
+Most users run the program from its graphical interface, which opens in the
+web browser and runs entirely on the local computer. No file is edited by
+hand: settings, components and samples are entered in forms and tables.
+
+```
+.raw files  ->  conversion to mzML  ->  mzstab interface  ->  report
 ```
 
-## Inputs (see `config/`)
+## 1. Get the program
 
-| File | Content |
-|---|---|
-| `thermo.yaml` / `waters.yaml` | One configuration per vendor run |
-| `components.yaml` | Injected components: neutral formula, allowed charges, charge mode |
-| `samples.csv` | `file` (name without extension of the mzML or CSV), `reaction`, `components` (`;`-separated, empty = all), `run_order` |
+**Option A: standalone application (no Python needed)**
 
-## Run
+Download the folder for your system from the *Actions* tab of this repository
+(latest `build-app` run, *Artifacts* section), unzip it, and start
+`mzstab-app.exe` (Windows) or `mzstab-app` (macOS, Linux). A console window
+shows the log and the interface opens in the browser. Closing the console
+stops the program.
 
-```bash
-mzstab convert -c config/thermo.yaml
-```
+**Option B: with Python (3.10 or later)**
 
 ```bash
-mzstab targets -c config/thermo.yaml
-```
-
-Review `work/targets.csv` and set `use` to 0 for ions not to follow. Then:
-
-```bash
-mzstab run -c config/thermo.yaml
-```
-
-`run` executes `targets` (if no table exists), `ingest`, `extract` and `analyze`.
-Each step can also be called separately. `convert --dry-run` prints the
-converter commands without running them.
-
-## Graphical interface
-
-```bash
-pip install -e ".[ui]"
+pip install ".[ui]"
 ```
 
 ```bash
 mzstab ui path/to/project
 ```
 
-This opens a page in the browser, running locally. A project folder holds one
-vendor run (`config.yaml`, `components.yaml`, `samples.csv`, `mzml/`, `work/`,
-`report/`); it is created if needed. The tabs follow the workflow:
-Settings, Components, Samples, Targets, Run, Results. The interface writes the
-same files as the command line, so a run can be repeated with
-`mzstab run -c path/to/project/config.yaml`.
+## 2. Install the converter
 
-In the Results tab, the derived thresholds can be replaced by manual values
-(stored under `thresholds: override:` in `config.yaml`; the derived values are
-kept in `thresholds.json`).
+The program cannot read vendor `.raw` files directly. They are converted to
+mzML by an external tool, which must be installed separately:
 
-## Standalone application
+| Vendor | Converter | Notes |
+|---|---|---|
+| Thermo | [ThermoRawFileParser](https://github.com/compomics/ThermoRawFileParser) | Windows, Linux, macOS |
+| Waters | msconvert ([ProteoWizard](https://proteowizard.sourceforge.io)) | Windows only for Waters files |
 
-The interface can be packaged as a program that needs no Python installation.
-An executable only runs on the operating system it was built on, so build it
-on the target system.
+If mzML files already exist, the converter is not needed: place them in the
+`mzml` folder of the project.
 
-Windows (from the repository root):
+## 3. Use the interface
+
+A *project folder* holds one instrument run. By default it is
+`mzstab_project` in the home folder; another folder can be typed in the
+sidebar. Put the `.raw` files in its `raw` subfolder (or mzML files in
+`mzml`). Then follow the tabs from left to right:
+
+| Tab | What to do |
+|---|---|
+| **1. Settings** | Choose the vendor; enter the resolving power, the m/z windows (default ±10 and ±5 ppm), the time-window lengths and the minimum number of scans per window. |
+| **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and charge mode. |
+| **3. Samples** | Click *Add files found*, then fill in the reaction and the components injected in each acquisition (empty = all). |
+| **4. Targets** | Generate the list of ions to follow and untick those not wanted. |
+| **5. Run** | *Convert raw files*, then *Run analysis*. The log appears below the buttons. |
+| **6. Results** | Recommended window, stable percentage, thresholds, traces per ion, flags, comparison of the m/z windows, report download. |
+
+The sidebar shows which steps are complete.
+
+### Components: charge mode
+
+- **proton**: the molecule is charged by gain or loss of H⁺
+  (`[M+H]+`, `[M+2H]2+`, `[M-H]-`, `[M-2H]2-`).
+- **intrinsic**: the species is itself an ion (for example Na, or a quaternary
+  ammonium). Its charge is applied by electron mass only, and it can form
+  adducts with the other molecules (for example `[M+Na]+`).
+
+Only entered species are used: no adduct is proposed with an ion that was not
+entered. Dimers are not generated.
+
+### Settings to check first
+
+- **Minimum scans per window** and **window lengths** must match the scan
+  rate. At 1.6 scans per second, 8 scans correspond to 5 s.
+- **Resolving power** as set in the instrument method.
+- **Maximum injection time** (Orbitrap) and **saturation intensity** (TOF), if
+  known, enable the corresponding flags.
+- **Waters:** the functions to keep (to exclude lock-mass and high-energy
+  scans) and the lock-mass m/z.
+
+### Recommended first run
+
+Use one file, run the analysis, and compare one trace with FreeStyle or
+MassLynx. Then add the other files. The validation step needs at least four
+acquisitions.
+
+## 4. Read the results
+
+The **Results** tab shows, for each m/z window and time axis (acquisition
+time, or time after signal onset):
+
+- the **recommended global window** and the percentage of traces that are
+  stable in it;
+- the **thresholds derived from the data** (RSD limit and slope limit), with
+  the figures to inspect them and fields to replace them manually;
+- a **table per target ion**: its own window, compared with the global one;
+- an **interactive chart of the traces** of a selected ion, with the stable
+  window of each acquisition highlighted;
+- **detection and flags** per ion: out of scan range, not detected, isotope
+  mismatch, saturated, injection time at maximum, unresolved, multiple peaks;
+- the **comparison of the m/z windows** (signal lost and interference removed
+  by the narrow window);
+- the **validation**: windows derived on half of the acquisitions and tested
+  on the other half.
+
+All tables and figures are also written to the `report` folder of the project
+and can be downloaded as a zip from the same tab.
+
+| File | Content |
+|---|---|
+| `trace_summary.csv` | Detection, mass error, isotope check and flags per trace |
+| `trace_results.csv` | Phases, trend, selected window or `no_stable_window` per trace |
+| `global_windows.csv`, `global_grid.csv` | Recommended window; stable percentage of every candidate window |
+| `group_windows.csv` | Window per target ion, compared with the global window |
+| `window_comparison.csv` | Wide versus narrow m/z window |
+| `thresholds.json` | Noise model, RSD factor, slope limit |
+| `validation.csv`, `fixed_window.csv`, `mixed_model_*.txt` | Validation, reproducibility in the global window, dependence on intensity, m/z, reaction, run order |
+| `*.png`, `traces_ppm*/` | Figures |
+
+## How it works
+
+1. **Targets** are computed from the entered components (monoisotopic m/z).
+2. **Scans** are filtered: MS1 (and selected Waters functions), dominant
+   polarity and scan range.
+3. **Traces** are extracted per target: in each scan, the centroid closest to
+   the theoretical m/z inside the window. Absolute intensities are used; there
+   is no normalization. Undetected scans stay missing.
+4. Each trace is **described**: rise, plateau and decay; mean, RSD and slope
+   in sliding windows of several lengths.
+5. **Thresholds** are derived from the data: the most stable window of each
+   trace gives a noise model (`RSD² = a/I + b`) and the spread of slopes.
+6. A window is **stable** if its RSD and slope are within the limits and its
+   slope is estimated precisely enough. Per trace, the stable window with the
+   lowest RSD/√n is selected. The global and per-ion windows are those stable
+   in the highest percentage of traces.
+
+## Files in a project folder
+
+The interface writes plain-text files that record the inputs of a run. They
+do not need to be edited by hand.
+
+| File | Written by tab |
+|---|---|
+| `config.yaml` | Settings |
+| `components.yaml` | Components |
+| `samples.csv` | Samples |
+| `work/targets.csv` | Targets |
+
+## Advanced
+
+### Command line
+
+The same analysis runs without the interface, on the files above (examples in
+`config/`):
 
 ```bash
-packaging\build.bat
+mzstab convert -c config.yaml
 ```
-
-Linux or macOS:
 
 ```bash
-bash packaging/build.sh
+mzstab targets -c config.yaml
 ```
 
-The result is the folder `dist/mzstab-app` (about 550 MB; about 200 MB zipped).
-Distribute the whole folder. Start `mzstab-app` (`mzstab-app.exe` on Windows);
-a console window shows the log and the page opens in the browser. Closing the
-console stops the program. The project folder defaults to
-`<home>/mzstab_project`; another folder can be given as argument or typed in
-the sidebar.
+```bash
+mzstab run -c config.yaml
+```
 
-`.github/workflows/build-app.yml` builds the three systems on GitHub Actions.
-The vendor converters are not included in the application.
+`run` executes `targets` (if no table exists), `ingest`, `extract` and
+`analyze`; each can be called separately. `convert --dry-run` prints the
+converter commands without running them. A project created in the interface
+can be re-run with `mzstab run -c path/to/project/config.yaml`.
 
-## CSV input
+### CSV input
 
 Spectra can be given as CSV instead of mzML: one file per acquisition in the
 data folder, one row per centroid peak.
@@ -99,80 +196,58 @@ time,mz,intensity
 ```
 
 Column names are detected (`time`/`rt`, `mz`/`m/z`, `intensity`, optional
-`scan`); set `csv: time_col:` etc. in the configuration if detection fails.
-`csv: time_unit:` is `s` or `min`; `csv: polarity:` is `1` or `-1`. Rows are
-grouped into scans by the scan column, or by identical time values. CSV files
-carry no scan range or injection time, so the out-of-range and injection-time
-flags are not available, and all rows are treated as MS1.
+`scan`). Time unit and polarity are set in the Settings tab. CSV files carry
+no scan range or injection time, so the corresponding flags are unavailable.
+An averaged spectrum exported from FreeStyle cannot be used: it has no time
+dimension.
 
-## Method
+### Building the standalone application
 
-1. **Targets.** `[M+H]+`, `[M+2H]2+`, `[M-H]-`, `[M-2H]2-` for the allowed
-   charge states; intrinsic ions by electron mass only; adducts only with
-   entered intrinsic ions (same sign as the total charge). No dimers.
-2. **Scan filter.** Configured MS level and Waters functions, then the dominant
-   polarity and scan range. Dropped scans are counted in `scans_dropped.csv`.
-3. **Extraction.** Per scan, the centroid closest to the theoretical m/z inside
-   each ppm window (with an absolute floor). Missing values stay missing.
-4. **Flags.** Not detected, out of scan range, saturated, injection time at
-   maximum, unresolved pair of targets, multiple centroids, isotope mismatch.
-   A trace is analyzed if detected in >= `min_consecutive_scans` consecutive
-   scans and its isotope ratio is not contradicted.
-5. **Description.** Rise/plateau/decay by change-point detection; sliding
-   windows (mean, RSD, relative slope and its standard error) on acquisition
-   time and on time after signal onset; linear trend over the acquisition.
-6. **Thresholds (from the data).** At the reference window length, the most
-   stable window of each trace is used to fit `RSD^2 = a/I + b` and to measure
-   the spread of slopes. A window is stable if its RSD is below
-   `rsd_factor x model`, its |slope| is below `slope_limit`, and the slope
-   standard error is also below `slope_limit`.
-7. **Selection.** Per trace: the stable window with the lowest RSD/sqrt(n).
-   Global and per target ion: the window that is stable in the highest
-   percentage of traces.
-8. **Validation.** Thresholds and windows derived on a random half of the
-   acquisitions are evaluated on the other half.
+An executable only runs on the system it was built on.
 
-## Outputs (`report_dir`)
+Windows:
 
-| File | Content |
-|---|---|
-| `trace_summary.csv` | Detection, mass error, isotope check and flags per trace and ppm setting |
-| `trace_results.csv` | Phases, trend, selected window or `no_stable_window`, per trace and time axis |
-| `thresholds.json` | Noise model, RSD factor, slope limit |
-| `global_windows.csv`, `global_grid.csv` | Recommended global window; stable percentage for every candidate window |
-| `group_windows.csv` | Window per target ion and comparison with the global window |
-| `window_comparison.csv` | Wide versus narrow m/z window: signal lost, interference removed, effect on stability |
-| `validation.csv` | Train/test percentages |
-| `fixed_window.csv` | Between-acquisition CV of the mean intensity in the global window |
-| `mixed_model_*.txt` | Dependence on intensity, m/z, reaction, run order |
-| `*.png`, `traces_ppm*/` | Profiles, stable-percentage heatmaps, RSD versus intensity, threshold histograms, mass error, traces per target |
+```bash
+packaging\build.bat
+```
 
-Results are produced for every ppm setting (`ppm` column or `_ppmN` suffix).
+Linux or macOS:
 
-## Tests
+```bash
+bash packaging/build.sh
+```
+
+The result is the folder `dist/mzstab-app` (about 550 MB). The workflow
+`.github/workflows/build-app.yml` builds the three systems on GitHub Actions
+(manual start from the Actions tab, or on a `v*` tag). The vendor converters
+are not included.
+
+### Tests
+
+```bash
+pip install ".[test]"
+```
 
 ```bash
 python -m pytest -q
 ```
 
-The tests generate synthetic centroided mzML files (`tests/synth.py`) and run
-the full pipeline. To create the same synthetic project for inspection:
-
-```bash
-python tests/synth.py demo && mzstab run -c demo/config.yaml
-```
+The tests generate synthetic mzML files (`tests/synth.py`) and run the full
+pipeline. `python tests/synth.py demo` creates the same synthetic project,
+which can be opened with `mzstab ui demo`.
 
 ## Status and limits
 
-- Tested on synthetic mzML only. Not yet run on real Thermo or Waters files.
-- The converter commands (`convert`) are not tested here; check them with
-  `--dry-run` against the installed ThermoRawFileParser / msconvert versions.
+- Tested on synthetic data only; not yet validated on real Thermo or Waters
+  files.
+- The conversion step calls external tools and is not covered by the tests.
 - Input must be centroided. Profile spectra produce a warning.
+- Ion suppression and source instability are not corrected: the results
+  describe when the signal is stable, not why it changes.
+- Ions formed with species that were not entered (for example sodium from
+  glassware) are not followed.
 - The noise model is fitted on the lowest-RSD window of each trace, which
-  biases it low; `rsd_factor` compensates. Inspect
-  `threshold_histograms_*.png` and `rsd_vs_intensity_*.png` before accepting
-  the thresholds.
-- Without `max_injection_time_ms`, the injection-time flag uses the largest
-  observed value as the maximum and is only indicative.
-- Adducts combining carriers of opposite sign (for example `[M-2H+Na]-`) are
-  not generated.
+  biases it low; a multiplying factor compensates. Inspect the threshold
+  figures before accepting the limits.
+- Adducts combining charge carriers of opposite sign (for example
+  `[M-2H+Na]-`) are not generated.
