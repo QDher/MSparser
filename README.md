@@ -146,6 +146,8 @@ time, or time after signal onset):
 - the **thresholds derived from the data** (RSD limit and slope limit), with
   the figures to inspect them and fields to replace them manually;
 - a **table per target ion**: its own window, compared with the global one;
+- a **table per acquisition**: the number of analyzed ions, how many have a
+  stable window, how many are stable in the global window, and which are not;
 - an **interactive chart of the traces** of a selected ion, with the stable
   window of each acquisition highlighted;
 - **detection and flags** per ion: out of scan range, not detected, isotope
@@ -184,6 +186,7 @@ and can be downloaded as a zip from the same tab.
 | `trace_results.csv` | Phases, trend, selected window or `no_stable_window` per trace |
 | `global_windows.csv`, `global_grid.csv` | Recommended window; stable percentage of every candidate window |
 | `group_windows.csv` | Window per target ion, compared with the global window |
+| `file_summary.csv` | Per acquisition: analyzed ions, ions with a stable window, ions stable in the global window |
 | `window_choice.csv` | Automatic and manual windows per ion, evaluated the same way; `chosen_by` marks the origin |
 | `manual_window_traces.csv` | Per acquisition: mean, RSD, slope and stability in the manual windows |
 | `window_comparison.csv` | Wide versus narrow m/z window |

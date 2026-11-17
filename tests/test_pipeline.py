@@ -82,6 +82,13 @@ def test_end_to_end(project):
     assert g["start"] >= 4 and g["start"] + g["length"] <= 26.5
     assert g["pct_all"] >= 60
 
+    fs = pd.read_csv(rep / "file_summary.csv")
+    fs = fs[(fs["ppm"] == 10) & (fs["axis"] == "clock")].set_index("file")
+    assert (fs["n_ions"] == 4).all() and len(fs) == 8
+    assert fs.loc["run02", "n_with_stable_window"] == 4 and fs.loc["run02", "n_stable_in_global_window"] == 4
+    assert fs.loc["run08", "n_with_stable_window"] == 0                 # drifting file
+    assert "caffeine [M+H]+" in fs.loc["run08", "ions_without_stable_window"]
+
     grp = pd.read_csv(rep / "group_windows.csv")
     assert (grp["n_acquisitions"] == 8).all()
     assert set(grp["target_id"]) == {"caffeine [M+H]+", "caffeine [M+Na]+", "choline [M]+",

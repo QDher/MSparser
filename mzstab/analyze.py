@@ -149,6 +149,29 @@ def group_level(win: pd.DataFrame, global_best: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def file_summary(win: pd.DataFrame, sel: pd.DataFrame, global_best: pd.DataFrame) -> pd.DataFrame:
+    """Per acquisition: number of analyzed ions, how many have a stable window
+    of their own, and how many are stable in the global window."""
+    rows = []
+    for (file, axis), g in sel.groupby(["file", "axis"], sort=True):
+        missing = sorted(g.loc[g["no_stable_window"], "target_id"])
+        row = dict(file=file, axis=axis, n_ions=len(g), n_with_stable_window=len(g) - len(missing),
+                   ions_without_stable_window="; ".join(missing))
+        gb = global_best[global_best["axis"] == axis]
+        if len(gb):
+            start, length = gb["start"].iloc[0], gb["length"].iloc[0]
+            at = _at_window(win[win["file"] == file], axis, start, length)
+            row.update(
+                global_start=start, global_end=start + length,
+                n_stable_in_global_window=int(at["stable"].sum()),
+                ions_not_stable_in_global_window="; ".join(
+                    sorted(set(g["target_id"]) - set(at.loc[at["stable"], "target_id"]))),
+                median_rsd_pct_in_global_window=100 * at.loc[at["eligible"], "rsd"].median(),
+            )
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 # ------------------------------------------------------------------ profiles
 def scaled_profiles(traces: pd.DataFrame, info: pd.DataFrame):
     """Traces scaled by their plateau median on a common time grid (comparison

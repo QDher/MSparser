@@ -475,6 +475,11 @@ with tabs[5]:
                "re-analyze; leave empty to use the derived values.")
     t1, t2, t3 = st.columns([1, 1, 2])
     ov = cfg["thresholds"].get("override") or {}
+    if thr.get("rsd_factor", 0) > 4 and "rsd_factor_derived" not in thr:
+        st.warning(f"The derived RSD limit is {thr['rsd_factor']:.1f} times the noise model, because the RSD differs "
+                   "widely between traces. Such a limit excludes almost no window, so stability rests on the slope "
+                   "criterion only. To make the RSD criterion effective, enter a lower RSD factor (for example 2) "
+                   "under 'Override RSD factor'.")
     t1.metric("RSD limit = noise model ×", f"{thr.get('rsd_factor', np.nan):.2f}")
     t2.metric("Slope limit, % per s", f"{thr.get('slope_limit', np.nan):.2f}")
     with t3.form("override"):
@@ -585,6 +590,17 @@ with tabs[5]:
                 "unresolved", "multiple_centroids"]
         st.dataframe(res.loc[res["target_id"] == tid, [c for c in show if c in res]], hide_index=True,
                      width="stretch")
+
+    st.subheader("Per acquisition")
+    fs = load("file_summary.csv")
+    if len(fs):
+        fs = fs[(fs["ppm"] == ppm_sel) & (fs["axis"] == axis_sel)].drop(columns=["ppm", "axis"])
+        st.caption("For each file: the number of analyzed ions, how many have a stable window of their own, and "
+                   "how many are stable in the recommended global window. Also saved as file_summary.csv.")
+        st.dataframe(fs, hide_index=True, width="stretch",
+                     column_config={"median_rsd_pct_in_global_window": st.column_config.NumberColumn(format="%.2f")})
+    else:
+        st.info("Available after the next analysis run.")
 
     st.subheader("Detection and flags")
     summ = load("trace_summary.csv")

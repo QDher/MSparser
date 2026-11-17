@@ -93,15 +93,18 @@ def fig_rsd_intensity(win, thr, path):
     if w.empty:
         return
     best = w.loc[w.groupby(TRACE)["rsd"].idxmin()]
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.scatter(best["mean"], best["rsd"] * 100, s=18, color=MUTED, alpha=0.7, lw=0,
-               label="Most stable window of each trace")
-    xs = np.geomspace(best["mean"].min(), best["mean"].max(), 100)
-    ax.plot(xs, rsd_model(xs, thr) * 100, color=BLUE, label="Noise model")
-    ax.plot(xs, rsd_model(xs, thr) * 100 * thr["rsd_factor"], color=ORANGE, label="Stability limit")
-    ax.set(xscale="log", yscale="log", xlabel="Mean intensity in window", ylabel="RSD (%)",
-           title=f"RSD versus intensity ({thr['reference_length_s']:g} s windows)")
-    ax.legend()
+    fig, ax = plt.subplots(figsize=(6, 4.4))
+    ax.scatter(best["mean"], best["rsd"] * 100, s=22, color=MUTED, alpha=0.8, lw=0,
+               label="Each dot: the most stable window of one trace")
+    lo, hi = best["mean"].min(), best["mean"].max()
+    xs = np.geomspace(lo / 1.3, hi * 1.3, 100)
+    ax.plot(xs, rsd_model(xs, thr) * 100, color=BLUE, label="Noise model (typical RSD at that intensity)")
+    ax.plot(xs, rsd_model(xs, thr) * 100 * thr["rsd_factor"], color=ORANGE,
+            label=f"Stability limit (model x {thr['rsd_factor']:.2f})")
+    ax.set(xscale="log", yscale="log", xlabel="Mean intensity in window", ylabel="RSD (%)")
+    ax.set_title(f"RSD versus intensity ({thr['reference_length_s']:g} s windows)")
+    # legend below the plot, so that it cannot be mistaken for data
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncols=1, handlelength=1.6)
     _save(fig, path)
 
 

@@ -108,7 +108,8 @@ def cmd_analyze(cfg, args=None):
         raise SystemExit("no analyzable trace: see trace_summary for flags")
     ppms = cfg["extraction"]["ppm_windows"]
     tables = {k: [] for k in ("trace_results", "global_grid", "global_windows", "group_windows",
-                              "validation", "fixed_window", "window_choice", "manual_window_traces")}
+                              "validation", "fixed_window", "window_choice", "manual_window_traces",
+                              "file_summary")}
     thresholds = {}
     for ppm in ppms:
         tag = f"ppm{ppm:g}"
@@ -121,6 +122,10 @@ def cmd_analyze(cfg, args=None):
         if thr["n_traces"] < 5:
             print(f"ppm {ppm:g}: thresholds derived from only {thr['n_traces']} trace(s); they are not reliable. "
                   "Check trace_summary for undetected targets, add acquisitions, or set the thresholds manually.")
+        if thr["rsd_factor"] > 4:
+            print(f"ppm {ppm:g}: the RSD limit is {thr['rsd_factor']:.1f} times the noise model, because RSD differs "
+                  "widely between traces. It excludes almost nothing; stability then rests on the slope criterion. "
+                  "A lower RSD factor can be set manually.")
         for key, val in (cfg["thresholds"].get("override") or {}).items():
             if val is not None and key in ("rsd_factor", "slope_limit"):
                 thr[f"{key}_derived"], thr[key] = thr[key], float(val)
@@ -140,7 +145,8 @@ def cmd_analyze(cfg, args=None):
 
         manual = cfg.get("manual_windows") or {}
         choice, manual_tr = an.window_choice(tr, thr, gbest, groups, manual, cfg)
-        for name, df in (("window_choice", choice), ("manual_window_traces", manual_tr),
+        per_file = an.file_summary(win, sel, gbest).merge(samples[["file", "reaction"]], on="file", how="left")
+        for name, df in (("window_choice", choice), ("manual_window_traces", manual_tr), ("file_summary", per_file),
                          ("trace_results", res), ("global_grid", grid), ("global_windows", gbest),
                          ("group_windows", groups), ("validation", an.validate(w_raw, cfg)),
                          ("fixed_window", an.fixed_window_reproducibility(win, sel, gbest))):
