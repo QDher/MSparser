@@ -1,5 +1,6 @@
 # Orbitrap run. Paths are relative to this file.
-vendor: thermo
+# Settings not listed here are read from the data files or use defaults
+# (see README, "Settings").
 paths:
   samples: samples.csv
   components: components.yaml
@@ -9,10 +10,3 @@ paths:
   report_dir: ../report_thermo
 extraction:
   ppm_windows: [10, 5]        # both are run and compared
-  min_window_mda: 0.5
-  max_injection_time_ms: null # set to the method's maximum injection time
-resolution: {value: 60000, at_mz: 200, scaling: orbitrap}
-windows:
-  lengths_s: [3, 5, 8, 10, 15, 20]
-  step_s: 1.0
-  min_scans: 8                # adjust to the scan rate

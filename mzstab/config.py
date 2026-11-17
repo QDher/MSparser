@@ -7,7 +7,8 @@ from pathlib import Path
 import yaml
 
 DEFAULTS = {
-    "vendor": "thermo",  # thermo | waters
+    # Settings on "auto" are read from the data files (see detect.py).
+    "vendor": "auto",  # auto | thermo | waters
     "paths": {
         "samples": "samples.csv",
         "components": "components.yaml",
@@ -32,7 +33,7 @@ DEFAULTS = {
     },
     "scan_filter": {
         "ms_level": 1,
-        "functions": None,  # Waters: list of function numbers to keep, e.g. [1]
+        "functions": None,  # Waters functions to keep; None = function 1 for Waters files
     },
     "extraction": {
         "ppm_windows": [10, 5],
@@ -44,10 +45,10 @@ DEFAULTS = {
         "saturation_intensity": None,   # TOF: flag traces reaching this value
         "max_injection_time_ms": None,  # Orbitrap: configured maximum IT
     },
-    "resolution": {"value": 60000, "at_mz": 200, "scaling": "orbitrap"},
+    "resolution": {"value": "auto", "at_mz": 200},  # auto: from the file, else a default
     "windows": {
-        "lengths_s": [3, 5, 8, 10, 15, 20],
-        "step_s": 1.0,
+        "lengths_s": "auto",  # auto: from scan rate and acquisition duration
+        "step_s": "auto",
         "min_scans": 8,
         "min_detected_fraction": 0.9,
     },
@@ -77,8 +78,8 @@ def load_config(path: str | Path) -> dict:
     cfg = _merge(copy.deepcopy(DEFAULTS), user)
     root = path.parent
     cfg["paths"] = {k: str((root / v).resolve()) for k, v in cfg["paths"].items()}
-    if cfg["vendor"] not in ("thermo", "waters"):
-        raise ValueError("vendor must be 'thermo' or 'waters'")
+    if cfg["vendor"] not in ("auto", "thermo", "waters"):
+        raise ValueError("vendor must be 'auto', 'thermo' or 'waters'")
     cfg["extraction"]["ppm_windows"] = sorted(
         {float(p) for p in cfg["extraction"]["ppm_windows"]}, reverse=True
     )

@@ -23,6 +23,7 @@ import yaml
 
 from mzstab import cli
 from mzstab.config import DEFAULTS, _merge, load_config
+from mzstab.detect import load_detected, resolve_resolution, resolve_windows
 from mzstab.targets import Component, generate_targets
 
 CHARGE_COLS = {"+1": 1, "+2": 2, "-1": -1, "-2": -2}
@@ -91,7 +92,6 @@ if not (root / "config.yaml").exists():
 cfg = user_cfg(root)
 paths = resolved(root)["paths"]
 work, rep = Path(paths["work_dir"]), Path(paths["report_dir"])
-st.sidebar.caption(f"Vendor: {cfg['vendor']}")
 status = {
     "Components": Path(paths["components"]).exists(),
     "Samples": Path(paths["samples"]).exists(),
@@ -105,69 +105,99 @@ for name, done in status.items():
 tabs = st.tabs(["1. Settings", "2. Components", "3. Samples", "4. Targets", "5. Run", "6. Results"])
 
 # ----------------------------------------------------------------- settings
+def _txt(v) -> str:
+    return "" if v in (None, "auto") else (", ".join(f"{x:g}" for x in v) if isinstance(v, list) else str(v))
+
+
 with tabs[0]:
-    st.caption("One project per instrument. Settings are saved to config.yaml in the project folder.")
+    st.caption("Only the m/z windows need to be chosen. The other settings are read from the data files "
+               "or use default values; they can be changed under 'Advanced settings'.")
+    detected = load_detected(work)
     with st.form("settings"):
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.subheader("Instrument")
-            vendor = st.selectbox("Vendor", ["thermo", "waters"], index=["thermo", "waters"].index(cfg["vendor"]))
-            res_value = st.number_input("Resolving power", value=float(cfg["resolution"]["value"]), step=1000.0)
-            res_at = st.number_input("Specified at m/z (Orbitrap)", value=float(cfg["resolution"].get("at_mz", 200)))
-            max_it = st.text_input("Maximum injection time, ms (Orbitrap, optional)",
-                                   "" if cfg["extraction"]["max_injection_time_ms"] is None
-                                   else str(cfg["extraction"]["max_injection_time_ms"]))
-            sat = st.text_input("Saturation intensity (TOF, optional)",
-                                "" if cfg["extraction"]["saturation_intensity"] is None
-                                else str(cfg["extraction"]["saturation_intensity"]))
-            functions = st.text_input("Waters functions to keep (e.g. 1)",
-                                      ", ".join(str(f) for f in cfg["scan_filter"]["functions"] or []))
-        with c2:
-            st.subheader("m/z extraction")
-            ppm = st.text_input("m/z windows, ± ppm (all are run and compared)",
-                                ", ".join(f"{p:g}" for p in cfg["extraction"]["ppm_windows"]))
-            min_mda = st.number_input("Minimum half-width, mDa", value=float(cfg["extraction"]["min_window_mda"]),
-                                      step=0.1, format="%.2f")
-            min_run = st.number_input("Detection: consecutive scans", value=int(cfg["extraction"]["min_consecutive_scans"]),
-                                      min_value=1, step=1)
-            st.subheader("Folders")
-            mzml_dir = st.text_input("Data folder (mzML or CSV files)", cfg["paths"]["mzml_dir"])
-            raw_dir = st.text_input("Raw folder (for conversion)", cfg["paths"]["raw_dir"])
-        with c3:
-            st.subheader("Time windows")
-            lengths = st.text_input("Window lengths, s", ", ".join(f"{x:g}" for x in cfg["windows"]["lengths_s"]))
-            step_s = st.number_input("Step between window starts, s", value=float(cfg["windows"]["step_s"]),
-                                     min_value=0.1, step=0.5)
-            min_scans = st.number_input("Minimum scans per window", value=int(cfg["windows"]["min_scans"]),
-                                        min_value=3, step=1)
-            st.subheader("Conversion (Waters lock mass)")
-            lock = st.text_input("Lock-mass m/z, positive", "" if cfg["convert"]["lockmass_mz"] is None
-                                 else str(cfg["convert"]["lockmass_mz"]))
-            lock_neg = st.text_input("Lock-mass m/z, negative", "" if cfg["convert"]["lockmass_mz_neg"] is None
-                                     else str(cfg["convert"]["lockmass_mz_neg"]))
-            st.subheader("CSV input")
-            csv_unit = st.selectbox("Time unit in CSV files", ["s", "min"],
-                                    index=["s", "min"].index(cfg["csv"]["time_unit"]))
-            csv_pol = st.selectbox("Polarity of CSV files", [1, -1], index=[1, -1].index(int(cfg["csv"]["polarity"])),
-                                   format_func={1: "positive", -1: "negative"}.get)
+        ppm = st.text_input("m/z windows, ± ppm (all are run and compared)",
+                            ", ".join(f"{p:g}" for p in cfg["extraction"]["ppm_windows"]))
+        with st.expander("Advanced settings (leave empty for automatic)"):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.markdown("**Instrument**")
+                vendors = ["auto", "thermo", "waters"]
+                vendor = st.selectbox("Vendor", vendors, index=vendors.index(cfg["vendor"]),
+                                      help="auto: recognised from the files")
+                res_value = st.text_input("Resolving power", _txt(cfg["resolution"].get("value")),
+                                          help="Empty: read from the file if present, otherwise "
+                                               "60,000 at m/z 200 (Orbitrap) or 20,000 (TOF). "
+                                               "Only used to flag targets too close to be separated.")
+                res_at = st.number_input("Specified at m/z (Orbitrap)", value=float(cfg["resolution"].get("at_mz", 200)))
+                max_it = st.text_input("Maximum injection time, ms (Orbitrap)", _txt(cfg["extraction"]["max_injection_time_ms"]),
+                                       help="Empty: the largest injection time observed in the file is used")
+                sat = st.text_input("Saturation intensity (TOF)", _txt(cfg["extraction"]["saturation_intensity"]),
+                                    help="Empty: the saturation flag is not evaluated")
+                functions = st.text_input("Waters functions to keep", _txt(cfg["scan_filter"]["functions"]),
+                                          help="Empty: function 1")
+            with c2:
+                st.markdown("**Time windows**")
+                lengths = st.text_input("Window lengths, s", _txt(cfg["windows"]["lengths_s"]),
+                                        help="Empty: chosen from the scan rate and the acquisition duration")
+                step_s = st.text_input("Step between window starts, s", _txt(cfg["windows"]["step_s"]),
+                                       help="Empty: 1 s, or the scan interval if longer")
+                min_scans = st.number_input("Minimum scans per window", value=int(cfg["windows"]["min_scans"]),
+                                            min_value=3, step=1)
+                st.markdown("**m/z extraction**")
+                min_mda = st.number_input("Minimum half-width, mDa", value=float(cfg["extraction"]["min_window_mda"]),
+                                          step=0.1, format="%.2f")
+                min_run = st.number_input("Detection: consecutive scans", value=int(cfg["extraction"]["min_consecutive_scans"]),
+                                          min_value=1, step=1)
+            with c3:
+                st.markdown("**Folders**")
+                mzml_dir = st.text_input("Data folder (mzML or CSV files)", cfg["paths"]["mzml_dir"])
+                raw_dir = st.text_input("Raw folder (for conversion)", cfg["paths"]["raw_dir"])
+                st.markdown("**Conversion (Waters lock mass)**")
+                lock = st.text_input("Lock-mass m/z, positive", _txt(cfg["convert"]["lockmass_mz"]))
+                lock_neg = st.text_input("Lock-mass m/z, negative", _txt(cfg["convert"]["lockmass_mz_neg"]))
+                st.markdown("**CSV input**")
+                csv_unit = st.selectbox("Time unit in CSV files", ["s", "min"],
+                                        index=["s", "min"].index(cfg["csv"]["time_unit"]))
+                csv_pol = st.selectbox("Polarity of CSV files", [1, -1], index=[1, -1].index(int(cfg["csv"]["polarity"])),
+                                       format_func={1: "positive", -1: "negative"}.get)
         if st.form_submit_button("Save settings", type="primary"):
             try:
                 cfg["vendor"] = vendor
-                cfg["resolution"] = {"value": res_value, "at_mz": res_at,
-                                     "scaling": "orbitrap" if vendor == "thermo" else "tof"}
+                cfg["resolution"] = {"value": opt_float(res_value) or "auto", "at_mz": res_at}
                 cfg["extraction"].update(
                     ppm_windows=sorted(parse_numbers(ppm), reverse=True), min_window_mda=min_mda,
                     min_consecutive_scans=int(min_run), max_injection_time_ms=opt_float(max_it),
                     saturation_intensity=opt_float(sat))
                 cfg["scan_filter"]["functions"] = [int(x) for x in parse_numbers(functions)] if functions.strip() else None
                 cfg["paths"].update(mzml_dir=mzml_dir, raw_dir=raw_dir)
-                cfg["windows"].update(lengths_s=sorted(parse_numbers(lengths)), step_s=step_s, min_scans=int(min_scans))
+                cfg["windows"].update(lengths_s=sorted(parse_numbers(lengths)) if lengths.strip() else "auto",
+                                      step_s=opt_float(step_s) or "auto", min_scans=int(min_scans))
                 cfg["convert"].update(lockmass_mz=opt_float(lock), lockmass_mz_neg=opt_float(lock_neg))
                 cfg["csv"].update(time_unit=csv_unit, polarity=int(csv_pol))
                 save_cfg(root, cfg)
                 st.success("Settings saved.")
             except ValueError as e:
                 st.error(f"Not saved: {e}")
+
+    st.subheader("Read from the data files")
+    if not detected:
+        st.info("Shown after the files have been read (tab 5, 'Run analysis').")
+    else:
+        rcfg = resolved(root)
+        rows = []
+        for f, d in detected.items():
+            r = resolve_resolution(rcfg, d)
+            rows.append({
+                "file": f, "vendor": d["vendor"], "polarity": "+" if d["polarity"] > 0 else "-",
+                "scan range": "–".join(f"{x:g}" for x in d["scan_range"]) if np.isfinite(d["scan_range"][0]) else "not in file",
+                "scans": d["n_scans"], "dropped scans": d["n_dropped"],
+                "duration (s)": round(d["duration_s"], 1),
+                "scans per s": round(1 / d["scan_interval_s"], 2) if d["n_scans"] > 1 else None,
+                "resolving power": f"{r['value']:,.0f} ({r['source']})",
+            })
+        st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+        w = resolve_windows(rcfg, detected)
+        st.caption(f"Time windows used: lengths {', '.join(f'{x:g}' for x in w['lengths_s'])} s; "
+                   f"step {w['step_s']:g} s; at least {w['min_scans']} scans per window.")
 
 # --------------------------------------------------------------- components
 with tabs[1]:

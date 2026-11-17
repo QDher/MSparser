@@ -61,7 +61,7 @@ sidebar. Put the `.raw` files in its `raw` subfolder (or mzML files in
 
 | Tab | What to do |
 |---|---|
-| **1. Settings** | Choose the vendor; enter the resolving power, the m/z windows (default ±10 and ±5 ppm), the time-window lengths and the minimum number of scans per window. |
+| **1. Settings** | Enter the m/z windows (default ±10 and ±5 ppm). Everything else is read from the data files or uses a default; see below. |
 | **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and charge mode. |
 | **3. Samples** | Click *Add files found*, then fill in the reaction and the components injected in each acquisition (empty = all). |
 | **4. Targets** | Generate the list of ions to follow and untick those not wanted. |
@@ -81,15 +81,29 @@ The sidebar shows which steps are complete.
 Only entered species are used: no adduct is proposed with an ion that was not
 entered. Dimers are not generated.
 
-### Settings to check first
+### Settings
 
-- **Minimum scans per window** and **window lengths** must match the scan
-  rate. At 1.6 scans per second, 8 scans correspond to 5 s.
-- **Resolving power** as set in the instrument method.
-- **Maximum injection time** (Orbitrap) and **saturation intensity** (TOF), if
-  known, enable the corresponding flags.
-- **Waters:** the functions to keep (to exclude lock-mass and high-energy
-  scans) and the lock-mass m/z.
+Only the m/z windows have to be chosen. The other settings are automatic and
+can be changed under *Advanced settings*:
+
+| Setting | Automatic value |
+|---|---|
+| Vendor | Recognised from the files (Thermo or Waters) |
+| Polarity, scan range | Read from the files |
+| Window lengths | From the scan rate and the acquisition duration: lengths holding at least the minimum number of scans and no longer than 60 % of the shortest acquisition |
+| Step between windows | 1 s, or the scan interval if longer |
+| Minimum scans per window | 8 |
+| Resolving power | Read from the file if present; otherwise 60,000 at m/z 200 (Orbitrap) or 20,000 (TOF). Only used to flag targets too close to be separated |
+| Maximum injection time (Orbitrap) | The largest injection time observed in the file |
+| Waters functions | Function 1 |
+
+After the files have been read, the Settings tab lists what was found in each
+file (vendor, polarity, scan range, number of scans, duration, scan rate,
+resolving power and its origin). The values used by a run are saved in
+`report/settings_used.json`.
+
+Not available from the files, optional: the saturation intensity (TOF) and
+the Waters lock-mass m/z (needed for conversion only).
 
 ### Recommended first run
 

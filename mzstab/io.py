@@ -8,6 +8,8 @@ import numpy as np
 import pandas as pd
 from pyteomics import mzml
 
+from .detect import detect_file, detect_vendor
+
 
 def _seconds(value) -> float:
     unit = getattr(value, "unit_info", None)
@@ -42,6 +44,8 @@ def read_mzml(path: str | Path) -> tuple[pd.DataFrame, pd.DataFrame]:
                     win_lo=float(win.get("scan window lower limit", np.nan)),
                     win_hi=float(win.get("scan window upper limit", np.nan)),
                     centroided="profile spectrum" not in s,
+                    filter_string=scan.get("filter string"),
+                    resolving_power=float(scan["mass resolving power"]) if "mass resolving power" in scan else np.nan,
                     n_peaks=len(mz),
                 )
             )
@@ -107,7 +111,7 @@ def read_csv_spectra(path: str | Path, cfg: dict) -> tuple[pd.DataFrame, pd.Data
         scan_idx=idx, native_id=[f"scan={i + 1}" for i in idx], function=1, ms_level=1,
         polarity=int(c["polarity"]), time_s=first_time.to_numpy(),
         tic=tic.reindex(idx).fillna(0.0).to_numpy(), injection_time_ms=np.nan,
-        win_lo=np.nan, win_hi=np.nan, centroided=True,
+        win_lo=np.nan, win_hi=np.nan, centroided=True, filter_string=None, resolving_power=np.nan,
         n_peaks=n_pk.reindex(idx).fillna(0).astype(int).to_numpy(),
     ))
     peaks = pd.DataFrame(dict(scan_idx=pk["scan_idx"].to_numpy(), mz=pk["mz"].to_numpy(),
@@ -131,8 +135,11 @@ def filter_scans(scans: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     scans = scans.copy()
     reason = pd.Series("", index=scans.index)
     reason[scans["ms_level"] != sf["ms_level"]] = "ms_level"
-    if sf.get("functions"):
-        reason[(reason == "") & ~scans["function"].isin(sf["functions"])] = "function"
+    functions = sf.get("functions")
+    if not functions and detect_vendor(scans) == "waters" and cfg["vendor"] != "thermo":
+        functions = [1]  # Waters: function 1 is the MS function; others are lock mass or high energy
+    if functions:
+        reason[(reason == "") & ~scans["function"].isin(functions)] = "function"
     ok = reason == ""
     if ok.any():
         pol = scans.loc[ok, "polarity"].mode().iloc[0]
@@ -147,7 +154,7 @@ def filter_scans(scans: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     return scans
 
 
-def ingest_file(path: Path, cfg: dict, work: Path) -> pd.DataFrame:
+def ingest_file(path: Path, cfg: dict, work: Path) -> tuple[pd.DataFrame, dict]:
     is_csv = path.suffix.lower() == ".csv"
     scans, peaks = read_csv_spectra(path, cfg) if is_csv else read_mzml(path)
     scans = filter_scans(scans, cfg)
@@ -159,7 +166,7 @@ def ingest_file(path: Path, cfg: dict, work: Path) -> pd.DataFrame:
     (work / "peaks").mkdir(parents=True, exist_ok=True)
     scans.to_parquet(work / "scans" / f"{path.stem}.parquet", index=False)
     peaks.to_parquet(work / "peaks" / f"{path.stem}.parquet", index=False)
-    return scans
+    return scans, detect_file(scans, cfg)
 
 
 def load_samples(cfg: dict) -> pd.DataFrame:

@@ -129,3 +129,25 @@ def test_csv_input(project, tmp_path):
     s = pd.read_csv(tmp_path / "report" / "trace_summary.csv")
     na = s[s["target_id"] == "sodium [M]+"]
     assert not na["out_of_range"].any() and na["not_detected"].all()
+
+
+def test_automatic_settings(project, tmp_path):
+    """With only the ppm windows configured, the other settings are detected
+    from the files and give the same windows as the explicit configuration."""
+    import shutil
+
+    shutil.copytree(project / "mzml", tmp_path / "mzml")
+    for f in ("components.yaml", "samples.csv"):
+        shutil.copy(project / f, tmp_path / f)
+    (tmp_path / "config.yaml").write_text("extraction:\n  ppm_windows: [10, 5]\n")
+    main(["run", "-c", str(tmp_path / "config.yaml")])
+    used = json.loads((tmp_path / "report" / "settings_used.json").read_text())
+    assert used["windows"]["lengths_s"] == [3, 5, 8, 10, 15]
+    assert used["windows"]["step_s"] == 1.0
+    f = used["files"]["run01"]
+    assert f["vendor"] == "thermo" and f["polarity"] == 1 and f["n_scans"] == 90
+    assert f["scan_range"] == [50.0, 750.0]
+    assert f["resolution"] == {"value": 140000.0, "at_mz": 200.0, "scaling": "orbitrap", "source": "file"}
+    cols = ["ppm", "axis", "start", "length", "n_stable", "n_traces"]
+    pd.testing.assert_frame_equal(pd.read_csv(project / "report" / "global_windows.csv")[cols],
+                                  pd.read_csv(tmp_path / "report" / "global_windows.csv")[cols])

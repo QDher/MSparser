@@ -32,12 +32,13 @@ def convert_all(cfg: dict, dry_run: bool = False) -> list[list[str]]:
     if not dry_run:
         out_dir.mkdir(parents=True, exist_ok=True)
     pattern = "*.raw"  # Thermo: files; Waters: directories
-    build = thermo_command if cfg["vendor"] == "thermo" else waters_command
     cmds = []
     for raw in sorted(raw_dir.glob(pattern)):
         if (out_dir / f"{raw.stem}.mzML").exists():
             continue
-        cmd = build(cfg, raw, out_dir)
+        # Waters raw data are folders, Thermo raw data are files
+        vendor = cfg["vendor"] if cfg["vendor"] != "auto" else ("waters" if raw.is_dir() else "thermo")
+        cmd = (thermo_command if vendor == "thermo" else waters_command)(cfg, raw, out_dir)
         cmds.append(cmd)
         if not dry_run:
             subprocess.run(cmd, check=True)

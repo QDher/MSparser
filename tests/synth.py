@@ -63,7 +63,8 @@ def write_file(path: Path, seed: int, drift: float = 0.0, interference: bool = F
                         params=[{"ms level": 1}, {"total ion current": float(inten.sum())}],
                         centroided=True, polarity=1, scan_start_time=t / 60.0,
                         scan_window_list=[(50.0, 750.0)],
-                        scan_params=[{"ion injection time": float(rng.uniform(5, 20))}],
+                        scan_params=[{"ion injection time": float(rng.uniform(5, 20))},
+                                     {"mass resolving power": 140000.0}],
                     )
                 for j in range(2):  # MS2 scans, to be dropped by the scan filter
                     out.write_spectrum(

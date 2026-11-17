@@ -28,7 +28,7 @@ def derive_thresholds(win: pd.DataFrame, cfg: dict) -> dict:
     tc = cfg["thresholds"]
     lengths = sorted(win.loc[win["eligible"], "length"].unique())
     if not lengths:
-        raise ValueError("no eligible window: check windows.lengths_s / min_scans")
+        raise ValueError("no eligible window: the acquisitions are too short for the window lengths and minimum scans")
     ref = tc["reference_length_s"] or lengths[len(lengths) // 2]
     ref = min(lengths, key=lambda x: abs(x - ref))
     best = _best_per_trace(win, ref)

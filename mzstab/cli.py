@@ -13,6 +13,7 @@ from . import report as rp
 from .config import load_config
 from .convert import convert_all
 from .describe import describe_traces
+from .detect import load_detected, resolve_resolution, resolve_windows, save_detected
 from .extract import compare_windows, extract_file
 from .io import find_input, ingest_file, load_samples
 from .targets import generate_targets, load_components
@@ -42,14 +43,18 @@ def cmd_targets(cfg, args=None):
 
 def cmd_ingest(cfg, args=None):
     work, mzml_dir = _work(cfg), Path(cfg["paths"]["mzml_dir"])
-    dropped = []
+    dropped, detected = [], {}
     for f in load_samples(cfg)["file"]:
         path = find_input(mzml_dir, f)
-        s = ingest_file(path, cfg, work)
+        s, detected[f] = ingest_file(path, cfg, work)
         d = s[~s["kept"]].groupby("drop_reason").size().rename("n_scans").reset_index()
         d.insert(0, "file", f)
         dropped.append(d)
-        print(f"{f}: {int(s['kept'].sum())}/{len(s)} scans kept")
+        d = detected[f]
+        print(f"{f}: {int(s['kept'].sum())}/{len(s)} scans kept | {d['vendor']}, "
+              f"{'+' if d['polarity'] > 0 else '-'}, {d['duration_s']:.0f} s, "
+              f"{1 / d['scan_interval_s']:.1f} scans/s" if d["n_scans"] > 1 else f"{f}: no usable scan")
+    save_detected(work, detected)
     pd.concat(dropped, ignore_index=True).to_csv(work / "scans_dropped.csv", index=False)
 
 
@@ -60,11 +65,13 @@ def cmd_extract(cfg, args=None):
     targets = pd.read_csv(work / "targets.csv")
     known = set(targets["component"])
     traces, summary = [], []
+    detected = load_detected(work)
     for s in load_samples(cfg).itertuples(index=False):
         injected = {c.strip() for c in s.components.split(";") if c.strip()} or None
         if injected and not injected <= known:
             raise ValueError(f"{s.file}: unknown components {sorted(injected - known)}")
-        t, m = extract_file(s.file, cfg, targets, injected, work)
+        t, m = extract_file(s.file, cfg, targets, injected, work,
+                            resolve_resolution(cfg, detected.get(s.file)))
         traces.append(t)
         summary.append(m)
     traces = pd.concat(traces, ignore_index=True)
@@ -84,6 +91,16 @@ def cmd_analyze(cfg, args=None):
     summary = pd.read_parquet(work / "trace_summary.parquet")
     comparison = pd.read_parquet(work / "window_comparison.parquet")
     samples = load_samples(cfg)[["file", "reaction", "run_order"]]
+    detected = load_detected(work)
+    used = [f for f in detected if f in set(samples["file"])]
+    cfg["windows"] = resolve_windows(cfg, {f: detected[f] for f in used})
+    w = cfg["windows"]
+    print(f"time windows: lengths {w['lengths_s']} s, step {w['step_s']:g} s, "
+          f"at least {w['min_scans']} scans" + (" (automatic)" if w["source"] else ""))
+    (rep / "settings_used.json").write_text(json.dumps({
+        "ppm_windows": cfg["extraction"]["ppm_windows"], "windows": w,
+        "files": {f: {**detected[f], "resolution": resolve_resolution(cfg, detected[f])} for f in used},
+    }, indent=2))
     info, windows = describe_traces(traces, summary, cfg)
     if windows.empty:
         raise SystemExit("no analyzable trace: see trace_summary for flags")

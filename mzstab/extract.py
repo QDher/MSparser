@@ -38,7 +38,7 @@ def _longest_run(mask: np.ndarray) -> int:
     return best
 
 
-def extract_file(file: str, cfg: dict, targets: pd.DataFrame, injected, work: Path):
+def extract_file(file: str, cfg: dict, targets: pd.DataFrame, injected, work: Path, resolution: dict):
     """Return (traces, summary) for one acquisition, all ppm settings."""
     ex = cfg["extraction"]
     scans = pd.read_parquet(work / "scans" / f"{file}.parquet")
@@ -74,7 +74,7 @@ def extract_file(file: str, cfg: dict, targets: pd.DataFrame, injected, work: Pa
     ids = in_range["target_id"].to_numpy()
     for a in range(len(mzs)):
         for b in range(a + 1, len(mzs)):
-            if abs(mzs[a] - mzs[b]) < mzs[a] / resolving_power(mzs[a], cfg["resolution"]):
+            if abs(mzs[a] - mzs[b]) < mzs[a] / resolving_power(mzs[a], resolution):
                 unresolved.update((ids[a], ids[b]))
 
     traces, summary = [], []
