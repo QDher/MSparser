@@ -495,9 +495,51 @@ with tabs[5]:
             except ValueError as e:
                 st.error(f"Not applied: {e}")
     f = st.columns(2)
-    for col, name in zip(f, (f"rsd_vs_intensity_{tag}.png", f"threshold_histograms_{tag}.png")):
-        if (rep / name).exists():
-            col.image(str(rep / name))
+    pts = load("threshold_points.csv")
+    pts = pts[pts["ppm"] == ppm_sel] if len(pts) else pts
+    with f[0]:
+        if len(pts) and thr:
+            st.markdown(f"**RSD versus intensity ({thr['reference_length_s']:g} s windows)**")
+            pts = pts.assign(rsd_pct=pts["rsd"] * 100, end=pts["start"] + pts["length"])
+            xs = np.geomspace(pts["mean"].min() / 1.3, pts["mean"].max() * 1.3, 60)
+            model = an.rsd_model(xs, thr) * 100
+            lim_label = f"Stability limit (model × {thr['rsd_factor']:.2f})"
+            lines = pd.concat([
+                pd.DataFrame({"mean": xs, "rsd_pct": model, "line": "Noise model"}),
+                pd.DataFrame({"mean": xs, "rsd_pct": model * thr["rsd_factor"], "line": lim_label}),
+            ])
+            xenc = alt.X("mean:Q", scale=alt.Scale(type="log"), title="Mean intensity in window")
+            yenc = alt.Y("rsd_pct:Q", scale=alt.Scale(type="log"), title="RSD (%)")
+            pick = alt.selection_point(name="dot", fields=["file", "target_id"])
+            dots = alt.Chart(pts).mark_circle(size=90, color=GREY).encode(
+                x=xenc, y=yenc, opacity=alt.condition(pick, alt.value(0.9), alt.value(0.3)),
+                tooltip=[alt.Tooltip("file:N"), alt.Tooltip("target_id:N", title="ion"),
+                         alt.Tooltip("mz:Q", title="m/z", format=".4f"),
+                         alt.Tooltip("mean:Q", title="mean intensity", format=".3s"),
+                         alt.Tooltip("rsd_pct:Q", title="RSD (%)", format=".1f"),
+                         alt.Tooltip("start:Q", title="window start (s)"),
+                         alt.Tooltip("end:Q", title="window end (s)")]).add_params(pick)
+            curves = alt.Chart(lines).mark_line(strokeWidth=2).encode(
+                x=xenc, y=yenc,
+                color=alt.Color("line:N", title=None, legend=alt.Legend(orient="bottom"),
+                                scale=alt.Scale(domain=["Noise model", lim_label], range=[BLUE, "#eb6834"])))
+            event = st.altair_chart(alt.layer(curves, dots).properties(height=330), width="stretch",
+                                    on_select="rerun", key=f"rsd_chart_{tag}")
+            st.caption("Each grey dot is the most stable window of one trace (one ion in one file). Hover a dot "
+                       "to see its file and ion; click it to list it below (shift-click for several).")
+            picked = (event.selection.get("dot") or []) if event and "selection" in event else []
+            if picked:
+                keys = pd.DataFrame(picked)[["file", "target_id"]]
+                show = pts.merge(keys, on=["file", "target_id"])[
+                    ["file", "target_id", "mz", "mean", "rsd_pct", "rel_slope", "start", "end"]]
+                st.dataframe(show.rename(columns={"target_id": "ion", "mz": "m/z", "mean": "mean intensity",
+                                                  "rsd_pct": "RSD (%)", "rel_slope": "slope (% per s)",
+                                                  "start": "window start (s)", "end": "window end (s)"}),
+                             hide_index=True, width="stretch")
+        elif (rep / f"rsd_vs_intensity_{tag}.png").exists():
+            st.image(str(rep / f"rsd_vs_intensity_{tag}.png"))
+    if (rep / f"threshold_histograms_{tag}.png").exists():
+        f[1].image(str(rep / f"threshold_histograms_{tag}.png"))
 
     st.subheader("Manual window")
     st.caption("Optional. Set a window on acquisition time (start and end, in s) for all ions, or for single "

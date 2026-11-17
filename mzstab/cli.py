@@ -109,7 +109,7 @@ def cmd_analyze(cfg, args=None):
     ppms = cfg["extraction"]["ppm_windows"]
     tables = {k: [] for k in ("trace_results", "global_grid", "global_windows", "group_windows",
                               "validation", "fixed_window", "window_choice", "manual_window_traces",
-                              "file_summary")}
+                              "file_summary", "threshold_points")}
     thresholds = {}
     for ppm in ppms:
         tag = f"ppm{ppm:g}"
@@ -145,8 +145,12 @@ def cmd_analyze(cfg, args=None):
 
         manual = cfg.get("manual_windows") or {}
         choice, manual_tr = an.window_choice(tr, thr, gbest, groups, manual, cfg)
+        # the points behind the RSD-versus-intensity figure: best window of each trace
+        pts = an._best_per_trace(w_raw, thr["reference_length_s"])[
+            an.TRACE + ["start", "length", "n", "mean", "rsd", "rel_slope"]]
+        pts = pts.merge(summary.loc[summary["ppm"] == ppm, an.TRACE + ["mz"]], on=an.TRACE, how="left")
         per_file = an.file_summary(win, sel, gbest).merge(samples[["file", "reaction"]], on="file", how="left")
-        for name, df in (("window_choice", choice), ("manual_window_traces", manual_tr), ("file_summary", per_file),
+        for name, df in (("window_choice", choice), ("manual_window_traces", manual_tr), ("file_summary", per_file), ("threshold_points", pts),
                          ("trace_results", res), ("global_grid", grid), ("global_windows", gbest),
                          ("group_windows", groups), ("validation", an.validate(w_raw, cfg)),
                          ("fixed_window", an.fixed_window_reproducibility(win, sel, gbest))):
