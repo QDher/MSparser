@@ -25,9 +25,12 @@ from mzstab import cli
 from mzstab.config import DEFAULTS, _merge, load_config
 from mzstab.detect import load_detected, resolve_resolution, resolve_windows
 from mzstab.analyze import manual_window_for
-from mzstab.targets import Component, generate_targets
+from mzstab.targets import Component, generate_targets, normalize_mode
 
 CHARGE_COLS = {"+1": 1, "+2": 2, "-1": -1, "-2": -2}
+# labels shown in the interface for the two charge modes stored in components.yaml
+MODE_LABELS = {"proton": "Molecule (gains or loses H⁺)", "intrinsic": "Ion (already charged)"}
+MODE_VALUES = {v: k for k, v in MODE_LABELS.items()}
 GREY, BLUE = "#898781", "#2a78d6"
 
 st.set_page_config(page_title="mzstab", layout="wide")
@@ -210,13 +213,14 @@ with tabs[0]:
 
 # --------------------------------------------------------------- components
 with tabs[1]:
-    st.caption("Enter every injected molecule or ion as a neutral formula and tick the charge states that are "
-               "possible.")
+    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), tick the "
+               "charge states that are possible, and choose what the component is:")
     st.markdown(
-        "- **Charge mode 'proton'** (molecules): charged by gain or loss of H⁺, e.g. [M+H]⁺, [M−H]⁻.\n"
-        "- **Charge mode 'intrinsic'** (species that are ions themselves: Na, K, Cl, a quaternary ammonium…): "
-        "charged without H⁺. **Set this mode for an ion to obtain its adducts with the molecules**, "
-        "e.g. sodium as *intrinsic, +1* gives [M+Na]⁺; chloride as *intrinsic, −1* gives [M+Cl]⁻.\n"
+        f"- **{MODE_LABELS['proton']}**: a neutral molecule that is protonated or deprotonated in the source, "
+        "e.g. [M+H]⁺, [M−H]⁻.\n"
+        f"- **{MODE_LABELS['intrinsic']}**: a species that is an ion by itself (Na, K, NH4, Cl, a quaternary "
+        "ammonium…). No H⁺ is added or removed. **Choose this for an ion to obtain its adducts with the "
+        "molecules**: sodium with +1 gives [M+Na]⁺; chloride with −1 gives [M+Cl]⁻.\n"
         "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
         "([M1+M2+H]⁺), or a cation with an anion.")
     cp = Path(paths["components"])
@@ -225,7 +229,7 @@ with tabs[1]:
         for d in (yaml.safe_load(cp.read_text()) or {}).get("components", []):
             rows.append({"name": d["name"], "formula": d["formula"],
                          **{k: v in d.get("charges", []) for k, v in CHARGE_COLS.items()},
-                         "mode": d.get("mode", "proton")})
+                         "mode": MODE_LABELS[normalize_mode(d.get("mode", "proton"))]})
     comp_df = pd.DataFrame(rows, columns=["name", "formula", *CHARGE_COLS, "mode"])
     for k in CHARGE_COLS:
         comp_df[k] = comp_df[k].astype(bool)
@@ -235,15 +239,15 @@ with tabs[1]:
             "name": st.column_config.TextColumn("Name", required=True),
             "formula": st.column_config.TextColumn("Neutral formula", required=True),
             **{k: st.column_config.CheckboxColumn(k, default=False) for k in CHARGE_COLS},
-            "mode": st.column_config.SelectboxColumn("Charge mode", options=["proton", "intrinsic"],
-                                                     default="proton", required=True),
+            "mode": st.column_config.SelectboxColumn("The component is a…", options=list(MODE_VALUES),
+                                                     default=MODE_LABELS["proton"], required=True, width="medium"),
         })
     if st.button("Save components", type="primary"):
         try:
             out, comps = [], []
             for r in edited.dropna(subset=["name", "formula"]).to_dict("records"):
                 charges = [v for k, v in CHARGE_COLS.items() if r.get(k) is True]
-                name, mode = str(r["name"]).strip(), r.get("mode") or "proton"
+                name, mode = str(r["name"]).strip(), MODE_VALUES.get(r.get("mode"), "proton")
                 if not charges:
                     raise ValueError(f"{name}: tick at least one charge state")
                 c = Component(name, str(r["formula"]).strip(), tuple(charges), mode)
@@ -309,10 +313,10 @@ with tabs[3]:
                        "are followed in positive-mode acquisitions, negative ions in negative-mode ones.")
             cps = (yaml.safe_load(Path(paths["components"]).read_text()) or {}).get("components", []) \
                 if Path(paths["components"]).exists() else []
-            if cps and not any(c.get("mode") == "intrinsic" for c in cps):
-                st.warning("No component has the charge mode 'intrinsic', so no adduct with an entered ion "
+            if cps and not any(normalize_mode(c.get("mode", "proton")) == "intrinsic" for c in cps):
+                st.warning(f"No component is set as '{MODE_LABELS['intrinsic']}', so no adduct with an entered ion "
                            "(such as [M+Na]⁺) is proposed. If a component is an ion (Na, K, Cl…), set its "
-                           "charge mode to 'intrinsic' in tab 2 and regenerate the targets.")
+                           "type to this in tab 2 and regenerate the targets.")
         t_edit = st.data_editor(
             t, width="stretch", hide_index=True, key="targets_editor",
             disabled=[c for c in t.columns if c != "use"],

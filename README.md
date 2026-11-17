@@ -65,7 +65,7 @@ sidebar. Put the `.raw` files in its `raw` subfolder (or mzML files in
 | Tab | What to do |
 |---|---|
 | **1. Settings** | Enter the m/z windows (default ±10 and ±5 ppm). Everything else is read from the data files or uses a default; see below. |
-| **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and charge mode. |
+| **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and type (molecule or ion). |
 | **3. Samples** | Click *Add files found*, then fill in the reaction and the components injected in each acquisition (empty = all). |
 | **4. Targets** | Generate the list of ions to follow and untick those not wanted. |
 | **5. Run** | *Convert raw files*, then *Run analysis*. The log lists each converted file; an error is shown if no raw file is found, the converter is missing, or it produces no mzML. |
@@ -73,15 +73,21 @@ sidebar. Put the `.raw` files in its `raw` subfolder (or mzML files in
 
 The sidebar shows which steps are complete.
 
-### Components: charge mode and proposed ions
+### Components: type and proposed ions
 
-- **proton** (molecules): charged by gain or loss of H⁺
-  (`[M+H]+`, `[M+2H]2+`, `[M-H]-`, `[M-2H]2-`).
-- **intrinsic** (species that are ions themselves, for example Na, K, Cl or a
-  quaternary ammonium): the charge is applied by electron mass only. **An ion
-  must be set to this mode to obtain its adducts with the molecules:** sodium
-  as *intrinsic, +1* gives `[M+Na]+`; chloride as *intrinsic, −1* gives
-  `[M+Cl]-`.
+For each component, the last column of the table states what it is:
+
+- **Molecule (gains or loses H⁺)**: a neutral molecule that is protonated or
+  deprotonated in the source (`[M+H]+`, `[M+2H]2+`, `[M-H]-`, `[M-2H]2-`).
+- **Ion (already charged)**: a species that is an ion by itself, for example
+  Na, K, NH4, Cl or a quaternary ammonium. No H⁺ is added or removed; only the
+  electron mass is applied. **An ion must be set to this type to obtain its
+  adducts with the molecules:** sodium with +1 gives `[M+Na]+`; chloride with
+  −1 gives `[M+Cl]-`.
+
+Formulas are always entered neutral: `Na`, not `Na+`. In `components.yaml`
+the two types are stored as `mode: proton` and `mode: intrinsic` (`molecule`
+and `ion` are also accepted).
 
 From the components, three types of ions are proposed (column `type` in the
 Targets tab):

@@ -44,6 +44,12 @@ class Component:
         return comp
 
 
+def normalize_mode(mode) -> str:
+    """'molecule' and 'ion' are accepted as synonyms of 'proton' and 'intrinsic'."""
+    m = str(mode).strip().lower()
+    return {"molecule": "proton", "ion": "intrinsic"}.get(m, m)
+
+
 def load_components(path: str | Path) -> list[Component]:
     with open(path) as fh:
         data = yaml.safe_load(fh)
@@ -52,9 +58,9 @@ def load_components(path: str | Path) -> list[Component]:
         charges = tuple(int(c) for c in d.get("charges", []))
         if any(c not in (-2, -1, 1, 2) for c in charges):
             raise ValueError(f"{d['name']}: charges must be among -2, -1, +1, +2")
-        mode = d.get("mode", "proton")
+        mode = normalize_mode(d.get("mode", "proton"))
         if mode not in ("proton", "intrinsic"):
-            raise ValueError(f"{d['name']}: mode must be 'proton' or 'intrinsic'")
+            raise ValueError(f"{d['name']}: mode must be 'molecule' (or 'proton') or 'ion' (or 'intrinsic')")
         if d["name"] in seen:
             raise ValueError(f"duplicate component name {d['name']}")
         seen.add(d["name"])
