@@ -146,7 +146,8 @@ def test_automatic_settings(project, tmp_path):
     shutil.copytree(project / "mzml", tmp_path / "mzml")
     for f in ("components.yaml", "samples.csv"):
         shutil.copy(project / f, tmp_path / f)
-    (tmp_path / "config.yaml").write_text("extraction:\n  ppm_windows: [10, 5]\n")
+    (tmp_path / "config.yaml").write_text(
+        "extraction:\n  ppm_windows: [10, 5]\nthresholds: {rsd_factor: auto, slope_limit: auto}\n")
     main(["run", "-c", str(tmp_path / "config.yaml")])
     used = json.loads((tmp_path / "report" / "settings_used.json").read_text())
     assert used["windows"]["lengths_s"] == [3, 5, 8, 10, 15]
@@ -279,7 +280,7 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
     for f in ("components.yaml", "samples.csv"):
         shutil.copy(project / f, a / f)
     cfg = yaml.safe_load((project / "config.yaml").read_text())
-    cfg["thresholds"] = {"override": {"slope_limit": 1e-9}}
+    cfg["thresholds"] = {"slope_limit": 1e-9}
     (a / "config.yaml").write_text(yaml.safe_dump(cfg))
     main(["analyze", "-c", str(a / "config.yaml")])
     r = pd.read_csv(a / "report" / "trace_results.csv")
@@ -299,7 +300,10 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
     r = pd.read_csv(b / "report" / "trace_results.csv")
     assert len(r[(r["ppm"] == 10) & (r["axis"] == "clock")]) == 2
     thr = json.loads((b / "report" / "thresholds.json").read_text())["ppm10"]
-    assert thr["n_traces"] == 2 and thr["model"] == "constant" and thr["slope_limit"] > 0
+    assert thr["n_traces"] == 2 and thr["model"] == "constant" and thr["slope_limit_derived"] > 0
+    # default limits: 12 x the noise model and 2 % per second, derived values kept for reference
+    assert (thr["rsd_factor"], thr["slope_limit"]) == (12.0, 2.0)
+    assert thr["rsd_factor_source"] == thr["slope_limit_source"] == "setting"
     assert not r.loc[(r["ppm"] == 10) & (r["axis"] == "clock"), "no_stable_window"].all()
 
 

@@ -119,16 +119,12 @@ def cmd_analyze(cfg, args=None):
         if w_raw.empty:
             continue
         thr = an.derive_thresholds(w_raw, cfg)
+        an.set_limits(thr, cfg)
         if thr["n_traces"] < 5:
-            print(f"ppm {ppm:g}: thresholds derived from only {thr['n_traces']} trace(s); they are not reliable. "
-                  "Check trace_summary for undetected targets, add acquisitions, or set the thresholds manually.")
-        if thr["rsd_factor"] > 4:
-            print(f"ppm {ppm:g}: the RSD limit is {thr['rsd_factor']:.1f} times the noise model, because RSD differs "
-                  "widely between traces. It excludes almost nothing; stability then rests on the slope criterion. "
-                  "A lower RSD factor can be set manually.")
-        for key, val in (cfg["thresholds"].get("override") or {}).items():
-            if val is not None and key in ("rsd_factor", "slope_limit"):
-                thr[f"{key}_derived"], thr[key] = thr[key], float(val)
+            print(f"ppm {ppm:g}: the noise model rests on only {thr['n_traces']} trace(s) and is not reliable. "
+                  "Check trace_summary for undetected targets, or add acquisitions.")
+        print(f"ppm {ppm:g}: RSD limit = {thr['rsd_factor']:g} x noise model ({thr['rsd_factor_source']}); "
+              f"slope limit = {thr['slope_limit']:g} % per s ({thr['slope_limit_source']})")
         thresholds[tag] = thr
         win = an.apply_thresholds(w_raw, thr)
         sel = an.select_trace_windows(win)

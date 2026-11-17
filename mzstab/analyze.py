@@ -55,6 +55,20 @@ def derive_thresholds(win: pd.DataFrame, cfg: dict) -> dict:
     return thr
 
 
+def set_limits(thr: dict, cfg: dict) -> dict:
+    """Replace the data-derived limits by the configured ones (unless "auto").
+    The derived values are kept under *_derived."""
+    tc = cfg["thresholds"]
+    old = tc.get("override") or {}  # key used by earlier versions
+    for key in ("rsd_factor", "slope_limit"):
+        val = old.get(key) if old.get(key) is not None else tc.get(key)
+        thr[f"{key}_derived"] = thr[key]
+        thr[f"{key}_source"] = "data"
+        if val not in (None, "auto"):
+            thr[key], thr[f"{key}_source"] = float(val), "setting"
+    return thr
+
+
 def apply_thresholds(win: pd.DataFrame, thr: dict) -> pd.DataFrame:
     win = win.copy()
     win["rsd_limit"] = thr["rsd_factor"] * rsd_model(win["mean"], thr)
@@ -256,7 +270,7 @@ def validate(win_raw: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     test_files = set(files[:n_test])
     is_test = win_raw["file"].isin(test_files)
     try:
-        thr = derive_thresholds(win_raw[~is_test], cfg)
+        thr = set_limits(derive_thresholds(win_raw[~is_test], cfg), cfg)
     except ValueError:
         return pd.DataFrame()
     train, test = apply_thresholds(win_raw[~is_test], thr), apply_thresholds(win_raw[is_test], thr)

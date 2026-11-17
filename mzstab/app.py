@@ -470,30 +470,47 @@ with tabs[5]:
     if (rep / name).exists():
         f[1].image(str(rep / name))
 
-    st.subheader("Thresholds derived from the data")
-    st.caption("Inspect the figures before accepting the thresholds. To replace them, enter values and "
-               "re-analyze; leave empty to use the derived values.")
-    t1, t2, t3 = st.columns([1, 1, 2])
-    ov = cfg["thresholds"].get("override") or {}
-    if thr.get("rsd_factor", 0) > 4 and "rsd_factor_derived" not in thr:
-        st.warning(f"The derived RSD limit is {thr['rsd_factor']:.1f} times the noise model, because the RSD differs "
-                   "widely between traces. Such a limit excludes almost no window, so stability rests on the slope "
-                   "criterion only. To make the RSD criterion effective, enter a lower RSD factor (for example 2) "
-                   "under 'Override RSD factor'.")
-    t1.metric("RSD limit = noise model ×", f"{thr.get('rsd_factor', np.nan):.2f}")
-    t2.metric("Slope limit, % per s", f"{thr.get('slope_limit', np.nan):.2f}")
-    with t3.form("override"):
-        o1, o2 = st.columns(2)
-        new_f = o1.text_input("Override RSD factor", "" if ov.get("rsd_factor") is None else str(ov["rsd_factor"]))
-        new_s = o2.text_input("Override slope limit", "" if ov.get("slope_limit") is None else str(ov["slope_limit"]))
-        if st.form_submit_button("Apply and re-analyze"):
+    st.subheader("Stability limits")
+    st.caption("A window is stable if its RSD is below the RSD limit, and its slope (drift) is within the slope "
+               "limit and measured precisely enough. Change the values and re-analyze; all result tables and "
+               "exported files then use the new limits. Empty = derive the value from the data.")
+    tc = cfg["thresholds"]
+    old_ov = tc.get("override") or {}
+
+    def _cur(key):
+        v = old_ov.get(key) if old_ov.get(key) is not None else tc.get(key)
+        return "" if v in (None, "auto") else f"{float(v):g}"
+
+    with st.form("limits"):
+        o1, o2, o3 = st.columns([1, 1, 1])
+        new_f = o1.text_input("RSD limit: × the noise model", _cur("rsd_factor"),
+                              help="12 means that a window is rejected when its RSD is more than 12 times the "
+                                   "typical RSD at that intensity (blue line of the graph below).")
+        new_s = o2.text_input("Slope limit, % per second", _cur("slope_limit"),
+                              help="Maximum drift of the signal inside a window, in % of its mean intensity per "
+                                   "second. 2 allows a change of up to 20 % across a 10 s window.")
+        o3.markdown("&nbsp;")
+        if o3.form_submit_button("Apply and re-analyze"):
             try:
-                cfg["thresholds"]["override"] = {"rsd_factor": opt_float(new_f), "slope_limit": opt_float(new_s)}
+                for key, txt in (("rsd_factor", new_f), ("slope_limit", new_s)):
+                    v = opt_float(txt)
+                    if v is not None and v <= 0:
+                        raise ValueError("limits must be positive")
+                    tc[key] = "auto" if v is None else v
+                tc.pop("override", None)
                 save_cfg(root, cfg)
                 if run_steps(root, [("Analyze", cli.cmd_analyze, argparse.Namespace())]):
                     st.rerun()
             except ValueError as e:
                 st.error(f"Not applied: {e}")
+    if thr:
+        src = {"setting": "set here", "data": "derived from the data"}
+        st.caption(
+            f"Used in the current results: RSD limit = {thr.get('rsd_factor', np.nan):g} × noise model "
+            f"({src.get(thr.get('rsd_factor_source'), 'derived from the data')}); slope limit = "
+            f"{thr.get('slope_limit', np.nan):g} % per s ({src.get(thr.get('slope_limit_source'), 'derived from the data')}). "
+            + (f"Values the data alone would give: {thr['rsd_factor_derived']:.2f} × and "
+               f"{thr['slope_limit_derived']:.2f} % per s." if "rsd_factor_derived" in thr and "slope_limit_derived" in thr else ""))
     f = st.columns(2)
     pts = load("threshold_points.csv")
     pts = pts[pts["ppm"] == ppm_sel] if len(pts) else pts

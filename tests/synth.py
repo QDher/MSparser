@@ -88,6 +88,7 @@ vendor: thermo
 extraction:
   ppm_windows: [10, 5]
 resolution: {value: 60000, at_mz: 200, scaling: orbitrap}
+thresholds: {rsd_factor: auto, slope_limit: auto}
 windows:
   lengths_s: [3, 5, 8, 10, 15]
   step_s: 1.0
