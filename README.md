@@ -57,16 +57,17 @@ If mzML files already exist, the converter is not needed: place them in the
 
 ## 3. Use the interface
 
-A *project folder* holds one instrument run. By default it is
-`mzstab_project` in the home folder; another folder can be typed in the
-sidebar. Put the `.raw` files in its `raw` subfolder (or mzML files in
-`mzml`). Then follow the tabs from left to right:
+A *project folder* holds one instrument run: its settings, intermediate files
+and report. By default it is `mzstab_project` in the home folder; another
+folder can be typed in the sidebar. The raw files do not have to be inside
+it: their folder is chosen in the Samples tab. Follow the tabs from left to
+right:
 
 | Tab | What to do |
 |---|---|
 | **1. Settings** | Enter the m/z windows (default ±10 and ±5 ppm). Everything else is read from the data files or uses a default; see below. |
 | **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and type (molecule or ion). |
-| **3. Samples** | Click *Add files found*, then fill in the reaction and the components injected in each acquisition (empty = all). |
+| **3. Samples** | Give the folder containing the raw files (a subfolder of the project folder, or a full path) and the folder for the converted files. Click *Add files found in these folders*, then fill in the reaction and the components injected in each acquisition (empty = all). |
 | **4. Targets** | Generate the list of ions to follow and untick those not wanted. |
 | **5. Run** | *Convert raw files*, then *Run analysis*. The log lists each converted file; an error is shown if no raw file is found, the converter is missing, or it produces no mzML. |
 | **6. Results** | Recommended window, stable percentage, thresholds, traces per ion, flags, comparison of the m/z windows, report download. |

@@ -23,6 +23,7 @@ import yaml
 
 from mzstab import cli
 from mzstab.config import DEFAULTS, _merge, load_config
+from mzstab.convert import find_raw
 from mzstab.detect import load_detected, resolve_resolution, resolve_windows
 from mzstab.analyze import manual_window_for
 from mzstab.targets import Component, generate_targets, normalize_mode
@@ -152,9 +153,7 @@ with tabs[0]:
                 min_run = st.number_input("Detection: consecutive scans", value=int(cfg["extraction"]["min_consecutive_scans"]),
                                           min_value=1, step=1)
             with c3:
-                st.markdown("**Folders**")
-                mzml_dir = st.text_input("Data folder (mzML or CSV files)", cfg["paths"]["mzml_dir"])
-                raw_dir = st.text_input("Raw folder (for conversion)", cfg["paths"]["raw_dir"])
+                st.caption("The folders of the raw and converted files are chosen in tab 3 (Samples).")
                 st.markdown("**Converters**")
                 thermo_parser = st.text_input("ThermoRawFileParser program or its folder", cfg["convert"]["thermo_parser"],
                                               help="Program name if it is on the PATH, otherwise its full path, "
@@ -178,7 +177,6 @@ with tabs[0]:
                     min_consecutive_scans=int(min_run), max_injection_time_ms=opt_float(max_it),
                     saturation_intensity=opt_float(sat))
                 cfg["scan_filter"]["functions"] = [int(x) for x in parse_numbers(functions)] if functions.strip() else None
-                cfg["paths"].update(mzml_dir=mzml_dir, raw_dir=raw_dir)
                 cfg["windows"].update(lengths_s=sorted(parse_numbers(lengths)) if lengths.strip() else "auto",
                                       step_s=opt_float(step_s) or "auto", min_scans=int(min_scans))
                 cfg["convert"].update(lockmass_mz=opt_float(lock), lockmass_mz_neg=opt_float(lock_neg),
@@ -273,7 +271,33 @@ with tabs[2]:
             pd.read_csv(sp, dtype=str, keep_default_na=False) if sp.exists() else pd.DataFrame(columns=cols)
         ).reindex(columns=cols).fillna("")
         st.session_state["samples_root"] = str(root)
-    if st.button("Add files found in the data and raw folders"):
+    st.markdown(f"**Where are the files?** Give a subfolder of the project folder `{root}` "
+                "(for example `raw` or `2026-10-17\\run1`), or a full path.")
+    f1, f2 = st.columns(2)
+    in_raw = f1.text_input("Folder containing the raw files", cfg["paths"]["raw_dir"],
+                           help="Subfolder of the project folder, or a full path such as D:\\data\\experiment1. "
+                                "Empty = the project folder itself.")
+    in_mzml = f2.text_input("Folder for the converted files (mzML), or containing mzML/CSV files",
+                            cfg["paths"]["mzml_dir"],
+                            help="Converted files are written here. If mzML or CSV files already exist, "
+                                 "give their folder; no conversion is then needed.")
+    chosen = {"raw_dir": in_raw.strip().strip('"') or ".", "mzml_dir": in_mzml.strip().strip('"') or "."}
+    if any(chosen[k] != cfg["paths"][k] for k in chosen):
+        cfg["paths"].update(chosen)
+        save_cfg(root, cfg)
+        st.rerun()
+    raw_p, mzml_p = Path(paths["raw_dir"]), Path(paths["mzml_dir"])
+    if raw_p.is_dir():
+        n_raw = len(find_raw(raw_p))
+        (f1.caption if n_raw else f1.warning)(f"{raw_p} — {n_raw} raw file(s) found")
+    else:
+        f1.warning(f"{raw_p} — folder not found")
+    if mzml_p.is_dir():
+        n_data = sum(p.suffix.lower() in (".mzml", ".csv") for p in mzml_p.iterdir())
+        f2.caption(f"{mzml_p} — {n_data} mzML/CSV file(s) found")
+    else:
+        f2.caption(f"{mzml_p} — will be created at conversion")
+    if st.button("Add files found in these folders"):
         found = sorted({p.stem for d in (paths["mzml_dir"], paths["raw_dir"]) if Path(d).exists()
                         for p in Path(d).iterdir() if p.suffix.lower() in (".mzml", ".csv", ".raw")})
         cur = st.session_state["samples_df"]

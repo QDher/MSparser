@@ -294,3 +294,17 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
     thr = json.loads((b / "report" / "thresholds.json").read_text())["ppm10"]
     assert thr["n_traces"] == 2 and thr["model"] == "constant" and thr["slope_limit"] > 0
     assert not r.loc[(r["ppm"] == 10) & (r["axis"] == "clock"), "no_stable_window"].all()
+
+
+def test_app_starts(tmp_path):
+    """The interface loads on an empty project without raising."""
+    AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
+    app = Path(__file__).parent.parent / "mzstab" / "app.py"
+    old = sys.argv
+    sys.argv = ["app.py", str(tmp_path)]
+    try:
+        at = AppTest.from_file(str(app), default_timeout=120).run()
+    finally:
+        sys.argv = old
+    assert not at.exception, [e.value for e in at.exception]
+    assert any(t.label == "Folder containing the raw files" for t in at.text_input)
