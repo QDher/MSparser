@@ -29,11 +29,29 @@ def waters_command(cfg: dict, raw: Path, out_dir: Path) -> list[str]:
     return cmd
 
 
-def _program(spec: str) -> list[str]:
-    """Converter setting -> command prefix. Accepts a program name, a full
-    path (spaces allowed), or a prefixed call such as 'mono /x/ThermoRawFileParser.exe'."""
+PROGRAM_NAMES = {
+    "thermo_parser": ("ThermoRawFileParser.exe", "ThermoRawFileParser"),
+    "msconvert": ("msconvert.exe", "msconvert"),
+}
+
+
+def _program(spec: str, key: str = "thermo_parser") -> list[str]:
+    """Converter setting -> command prefix. Accepts a program name, the full
+    path of the program (spaces allowed), the folder that contains it, or a
+    prefixed call such as 'mono /x/ThermoRawFileParser.exe'."""
     spec = str(spec).strip()
     whole = spec[1:-1] if spec.count('"') == 2 and spec.startswith('"') and spec.endswith('"') else spec
+    if Path(whole).is_dir():
+        # a folder was given: look for the program inside it (and its subfolders)
+        folder = Path(whole)
+        for name in PROGRAM_NAMES[key]:
+            hits = sorted(p for p in folder.rglob(name) if p.is_file())
+            if hits:
+                return [str(hits[0])]
+        raise FileNotFoundError(
+            f"'{folder}' is a folder and contains no {PROGRAM_NAMES[key][0]}. "
+            f"Give the full path of the program file, for example {folder / PROGRAM_NAMES[key][0]}"
+        )
     if Path(whole).exists() or shutil.which(whole):
         return [whole]
     parts = shlex.split(spec, posix=os.name != "nt")
@@ -70,7 +88,7 @@ def convert_all(cfg: dict, dry_run: bool = False) -> list[list[str]]:
         vendor = cfg["vendor"] if cfg["vendor"] != "auto" else ("waters" if raw.is_dir() else "thermo")
         cmd = (thermo_command if vendor == "thermo" else waters_command)(cfg, raw, out_dir)
         key = "thermo_parser" if vendor == "thermo" else "msconvert"
-        cmd = _program(cfg["convert"][key]) + cmd[1:]
+        cmd = _program(cfg["convert"][key], key) + cmd[1:]
         cmds.append(cmd)
         if dry_run:
             continue
@@ -80,7 +98,15 @@ def convert_all(cfg: dict, dry_run: bool = False) -> list[list[str]]:
                 f"converter not found: '{cmd[0]}'. Install {name} and give the full path of its program "
                 f"in Settings > Advanced settings > Converters."
             )
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True)
+        except OSError as e:
+            raise RuntimeError(
+                f"the converter could not be started: {cmd[0]}\n{e}\n"
+                "Check that the converter setting is the program file itself (ending in .exe on Windows), "
+                "not a folder or another file. If the program was downloaded, Windows may block it: "
+                "right-click the .exe > Properties > tick 'Unblock', or allow it in the antivirus."
+            ) from e
         if r.returncode != 0 or not target.exists():
             tail = "\n".join((r.stdout + "\n" + r.stderr).strip().splitlines()[-15:])
             raise RuntimeError(

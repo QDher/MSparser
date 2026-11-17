@@ -245,3 +245,16 @@ def test_convert_reports_and_fails_clearly(tmp_path, capsys):
     assert "runA.RAW -> runA.mzML" in capsys.readouterr().out
     convert_all(cfg)
     assert "already converted" in capsys.readouterr().out
+
+
+def test_converter_setting_may_be_a_folder(tmp_path):
+    from mzstab.convert import _program
+
+    sub = tmp_path / "ThermoRawFileParser-win" / "inner"
+    sub.mkdir(parents=True)
+    with pytest.raises(FileNotFoundError, match="is a folder and contains no ThermoRawFileParser.exe"):
+        _program(str(tmp_path), "thermo_parser")
+    exe = sub / "ThermoRawFileParser.exe"
+    exe.write_text("x")
+    assert _program(str(tmp_path), "thermo_parser") == [str(exe)]      # found in a subfolder
+    assert _program(f'"{exe}"', "thermo_parser") == [str(exe)]          # quoted full path

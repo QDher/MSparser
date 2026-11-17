@@ -156,7 +156,7 @@ with tabs[0]:
                 mzml_dir = st.text_input("Data folder (mzML or CSV files)", cfg["paths"]["mzml_dir"])
                 raw_dir = st.text_input("Raw folder (for conversion)", cfg["paths"]["raw_dir"])
                 st.markdown("**Converters**")
-                thermo_parser = st.text_input("ThermoRawFileParser program", cfg["convert"]["thermo_parser"],
+                thermo_parser = st.text_input("ThermoRawFileParser program or its folder", cfg["convert"]["thermo_parser"],
                                               help="Program name if it is on the PATH, otherwise its full path, "
                                                    "e.g. C:\\Tools\\ThermoRawFileParser\\ThermoRawFileParser.exe")
                 msconvert = st.text_input("msconvert program (Waters)", cfg["convert"]["msconvert"],
