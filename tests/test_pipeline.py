@@ -211,8 +211,6 @@ def test_pair_targets():
 
 
 def test_convert_reports_and_fails_clearly(tmp_path, capsys):
-    import stat
-
     from mzstab.config import load_config
     from mzstab.convert import convert_all
 
@@ -228,18 +226,20 @@ def test_convert_reports_and_fails_clearly(tmp_path, capsys):
         convert_all(cfg)
 
     def fake(name, body):
-        p = tmp_path / name
-        p.write_text("#!/bin/sh\n" + body)
-        p.chmod(p.stat().st_mode | stat.S_IEXEC)
-        return str(p)
+        """A stand-in converter written in Python, so that it runs on every system."""
+        p = tmp_path / f"{name}.py"
+        p.write_text("import sys, pathlib\n" + body)
+        return f'"{sys.executable}" "{p}"'
 
     # a converter that exits normally without writing the mzML is an error
-    cfg["convert"]["thermo_parser"] = fake("silent", "echo license missing\nexit 0\n")
+    cfg["convert"]["thermo_parser"] = fake("silent", "print('license missing')\n")
     with pytest.raises(RuntimeError, match="did not produce runA.mzML(.|\n)*license missing"):
         convert_all(cfg)
     # a working converter: -i=<raw> -o=<dir>
     cfg["convert"]["thermo_parser"] = fake(
-        "good", 'i=${1#-i=}; o=${2#-o=}; b=$(basename "$i"); echo data > "$o/${b%.*}.mzML"\n')
+        "good",
+        "i = pathlib.Path(sys.argv[1][3:]); o = pathlib.Path(sys.argv[2][3:])\n"
+        "(o / (i.stem + '.mzML')).write_text('data')\n")
     convert_all(cfg)
     assert (tmp_path / "mzml" / "runA.mzML").exists()
     assert "runA.RAW -> runA.mzML" in capsys.readouterr().out
