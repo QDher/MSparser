@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 
+from mzstab import analyze as an
 from mzstab import cli
 from mzstab.config import DEFAULTS, _merge, load_config
 from mzstab.convert import find_raw
@@ -425,9 +426,49 @@ with tabs[5]:
     m[3].metric("Traces without stable window", f"{int(res['no_stable_window'].sum())} / {len(res)}")
 
     f = st.columns(2)
-    for col, name in zip(f, (f"profiles_{tag}.png", f"stable_pct_{axis_sel}_{tag}.png")):
-        if (rep / name).exists():
-            col.image(str(rep / name))
+    with f[0]:
+        st.markdown("**Scaled intensity profiles**")
+        ions = sorted(res["target_id"].unique())
+        shown = st.multiselect("Ions shown", ions, default=ions, key="profile_ions",
+                               help="Each trace is divided by its own plateau median, so ions of different "
+                                    "intensity can be compared. Select one ion to see only its traces.")
+        prof_info = res_all[(res_all["ppm"] == ppm_sel) & (res_all["axis"] == "clock")]
+        prof_info = prof_info[prof_info["target_id"].isin(shown)]
+        if shown and (work / "traces.parquet").exists() and len(prof_info):
+            ptr = pd.read_parquet(work / "traces.parquet", filters=[("ppm", "==", ppm_sel)])
+            ptr = ptr.merge(prof_info[["file", "target_id"]], on=["file", "target_id"])
+            long, summ = an.scaled_profiles(ptr, prof_info)
+            if len(summ):
+                long["trace"] = long["file"] + " | " + long["target_id"]
+                top = float(min(max(1.6, summ["q75"].max() * 1.1), 3.0))
+                px = alt.X("time_s:Q", title="Acquisition time (s)")
+                ysc = alt.Scale(domain=[0, top], clamp=True)
+                layers = []
+                gclock = gw[(gw["ppm"] == ppm_sel) & (gw["axis"] == "clock")]
+                if len(gclock):
+                    g0 = float(gclock["start"].iloc[0])
+                    layers.append(alt.Chart(pd.DataFrame({"x": [g0], "x2": [g0 + float(gclock["length"].iloc[0])]}))
+                                  .mark_rect(color=BLUE, opacity=0.10).encode(x="x:Q", x2="x2:Q"))
+                layers.append(alt.Chart(long).mark_line(color=GREY, strokeWidth=0.7, opacity=0.45).encode(
+                    x=px, y=alt.Y("scaled:Q", title="Intensity / plateau median", scale=ysc), detail="trace:N",
+                    tooltip=[alt.Tooltip("file:N"), alt.Tooltip("target_id:N", title="ion"),
+                             alt.Tooltip("time_s:Q", format=".1f"), alt.Tooltip("scaled:Q", format=".2f")]))
+                layers.append(alt.Chart(summ).mark_area(color=BLUE, opacity=0.25).encode(
+                    x=px, y=alt.Y("q25:Q", scale=ysc), y2="q75:Q"))
+                layers.append(alt.Chart(summ).mark_line(color=BLUE, strokeWidth=2).encode(
+                    x=px, y=alt.Y("median:Q", scale=ysc),
+                    tooltip=[alt.Tooltip("time_s:Q", format=".1f"), alt.Tooltip("median:Q", format=".2f"),
+                             alt.Tooltip("n:Q", title="traces")]))
+                st.altair_chart(alt.layer(*layers).properties(height=330), width="stretch")
+                n_tr = long["trace"].nunique()
+                st.caption(f"{n_tr} trace(s) of {len(shown)} ion(s): one thin grey line per acquisition and ion. "
+                           "Blue line: median of these traces at each time; blue band: middle half of the traces "
+                           "(interquartile range). Shaded area: recommended global window, computed on all ions.")
+        elif not shown:
+            st.info("Select at least one ion.")
+    name = f"stable_pct_{axis_sel}_{tag}.png"
+    if (rep / name).exists():
+        f[1].image(str(rep / name))
 
     st.subheader("Thresholds derived from the data")
     st.caption("Inspect the figures before accepting the thresholds. To replace them, enter values and "
