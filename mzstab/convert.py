@@ -32,9 +32,10 @@ def waters_command(cfg: dict, raw: Path, out_dir: Path) -> list[str]:
 def _program(spec: str) -> list[str]:
     """Converter setting -> command prefix. Accepts a program name, a full
     path (spaces allowed), or a prefixed call such as 'mono /x/ThermoRawFileParser.exe'."""
-    spec = str(spec).strip().strip('"')
-    if Path(spec).exists() or shutil.which(spec):
-        return [spec]
+    spec = str(spec).strip()
+    whole = spec[1:-1] if spec.count('"') == 2 and spec.startswith('"') and spec.endswith('"') else spec
+    if Path(whole).exists() or shutil.which(whole):
+        return [whole]
     parts = shlex.split(spec, posix=os.name != "nt")
     return [x.strip('"') for x in parts] or [spec]
 
