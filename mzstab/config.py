@@ -58,6 +58,9 @@ DEFAULTS = {
         # optional manual values replacing the data-derived ones
         "override": {"rsd_factor": None, "slope_limit": None},
     },
+    # Windows set by the user, on acquisition time, as [start_s, end_s].
+    # "targets" maps a target_id to its own window and takes precedence.
+    "manual_windows": {"global": None, "targets": {}},
     "validation": {"test_fraction": 0.5, "seed": 0, "min_files": 4},
 }
 

@@ -43,41 +43,46 @@ def segment_phases(t: np.ndarray, y: np.ndarray, cfg: dict) -> dict:
     return out
 
 
+def window_stats(t: np.ndarray, y: np.ndarray, start: float, end: float, w: dict) -> dict:
+    """Mean, RSD, relative slope (% per s) and its standard error for the scans
+    in [start, end). `eligible`: enough scans, enough of them detected."""
+    det = np.isfinite(y)
+    a = np.searchsorted(t, start - 1e-9, "left")
+    b = np.searchsorted(t, end - 1e-9, "left")
+    n_all = b - a
+    d = det[a:b]
+    n = int(d.sum())
+    row = dict(n_scans=n_all, n=n, mean=np.nan, rsd=np.nan, rel_slope=np.nan, slope_se=np.nan)
+    if n >= 3:
+        tv, yv = t[a:b][d], y[a:b][d]
+        mean = yv.mean()
+        tc = tv - tv.mean()
+        sxx = (tc**2).sum()
+        if mean > 0 and sxx > 0:
+            slope = (tc * yv).sum() / sxx
+            ssr = ((yv - mean - slope * tc) ** 2).sum()
+            row.update(mean=mean, rsd=yv.std(ddof=1) / mean, rel_slope=slope / mean * 100.0,
+                       slope_se=np.sqrt(ssr / (n - 2) / sxx) / mean * 100.0)
+    row["eligible"] = bool(
+        n_all >= w["min_scans"] and n_all > 0
+        and n / n_all >= w["min_detected_fraction"] and np.isfinite(row["rsd"])
+    )
+    return row
+
+
 def sliding_windows(t: np.ndarray, y: np.ndarray, cfg: dict, origin: float = 0.0) -> pd.DataFrame:
     """Metrics for windows [start, start+length) on a grid anchored at `origin`.
     `start` is reported relative to `origin`."""
     w = cfg["windows"]
     step = float(w["step_s"])
     rows = []
-    det = np.isfinite(y)
     for length in w["lengths_s"]:
         k0 = int(np.ceil((t[0] - origin) / step - 1e-9))
         k1 = int(np.floor((t[-1] - length - origin) / step + 1e-9))
         for k in range(k0, k1 + 1):
             s = origin + k * step
-            a = np.searchsorted(t, s - 1e-9, "left")
-            b = np.searchsorted(t, s + length - 1e-9, "left")
-            n_all = b - a
-            d = det[a:b]
-            n = int(d.sum())
-            row = dict(start=round(k * step, 6), length=float(length), n_scans=n_all, n=n,
-                       mean=np.nan, rsd=np.nan, rel_slope=np.nan, slope_se=np.nan)
-            if n >= 3:
-                tv, yv = t[a:b][d], y[a:b][d]
-                mean = yv.mean()
-                tc = tv - tv.mean()
-                sxx = (tc**2).sum()
-                if mean > 0 and sxx > 0:
-                    slope = (tc * yv).sum() / sxx
-                    ssr = ((yv - mean - slope * tc) ** 2).sum()
-                    row.update(mean=mean, rsd=yv.std(ddof=1) / mean,
-                               rel_slope=slope / mean * 100.0,
-                               slope_se=np.sqrt(ssr / (n - 2) / sxx) / mean * 100.0)
-            row["eligible"] = bool(
-                n_all >= w["min_scans"] and n_all > 0
-                and n / n_all >= w["min_detected_fraction"] and np.isfinite(row["rsd"])
-            )
-            rows.append(row)
+            rows.append(dict(start=round(k * step, 6), length=float(length),
+                             **window_stats(t, y, s, s + length, w)))
     return pd.DataFrame(rows)
 
 

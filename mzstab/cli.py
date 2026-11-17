@@ -106,7 +106,7 @@ def cmd_analyze(cfg, args=None):
         raise SystemExit("no analyzable trace: see trace_summary for flags")
     ppms = cfg["extraction"]["ppm_windows"]
     tables = {k: [] for k in ("trace_results", "global_grid", "global_windows", "group_windows",
-                              "validation", "fixed_window")}
+                              "validation", "fixed_window", "window_choice", "manual_window_traces")}
     thresholds = {}
     for ppm in ppms:
         tag = f"ppm{ppm:g}"
@@ -133,7 +133,10 @@ def cmd_analyze(cfg, args=None):
                .merge(samples, on="file", how="left"))
         (rep / f"mixed_model_{tag}.txt").write_text(an.mixed_models(res[res["axis"] == "clock"]))
 
-        for name, df in (("trace_results", res), ("global_grid", grid), ("global_windows", gbest),
+        manual = cfg.get("manual_windows") or {}
+        choice, manual_tr = an.window_choice(tr, thr, gbest, groups, manual, cfg)
+        for name, df in (("window_choice", choice), ("manual_window_traces", manual_tr),
+                         ("trace_results", res), ("global_grid", grid), ("global_windows", gbest),
                          ("group_windows", groups), ("validation", an.validate(w_raw, cfg)),
                          ("fixed_window", an.fixed_window_reproducibility(win, sel, gbest))):
             if len(df):
@@ -142,16 +145,18 @@ def cmd_analyze(cfg, args=None):
         long, summ = an.scaled_profiles(tr, inf)
         if len(summ):
             summ.to_csv(rep / f"profile_{tag}.csv", index=False)
-            rp.fig_profiles(long, summ, gbest, rep / f"profiles_{tag}.png")
+            rp.fig_profiles(long, summ, gbest, rep / f"profiles_{tag}.png", manual.get("global"))
         for axis in ("clock", "onset"):
             rp.fig_heatmap(grid, axis, rep / f"stable_pct_{axis}_{tag}.png")
         rp.fig_rsd_intensity(win, thr, rep / f"rsd_vs_intensity_{tag}.png")
         rp.fig_threshold_hists(win, thr, rep / f"threshold_histograms_{tag}.png")
-        rp.fig_target_traces(tr, sel, groups, rep / f"traces_{tag}")
+        rp.fig_target_traces(tr, sel, groups, rep / f"traces_{tag}", manual)
 
     for name, parts in tables.items():
         if parts:
             pd.concat(parts, ignore_index=True).to_csv(rep / f"{name}.csv", index=False)
+        elif (rep / f"{name}.csv").exists():
+            (rep / f"{name}.csv").unlink()  # e.g. manual windows removed since the last run
     (rep / "thresholds.json").write_text(json.dumps(thresholds, indent=2))
     summary.to_csv(rep / "trace_summary.csv", index=False)
     pd.read_csv(work / "targets.csv").to_csv(rep / "targets.csv", index=False)

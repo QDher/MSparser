@@ -130,6 +130,26 @@ time, or time after signal onset):
 - the **validation**: windows derived on half of the acquisitions and tested
   on the other half.
 
+### Manual window
+
+The automatic windows can be complemented by a window chosen by the user, in
+the **Manual window** section of the Results tab: a start and end time (on
+acquisition time) for all ions, or for single ions. A window set for one ion
+takes precedence over the one set for all ions. *Apply and re-analyze*
+evaluates the manual windows with the same criteria as the automatic ones.
+
+The table below the form, also saved as `window_choice.csv`, lists per ion
+the automatic window for all ions, the automatic window of that ion and the
+manual window, each with the percentage of acquisitions in which the signal
+is stable, the median RSD and slope, the mean intensity and its variation
+between acquisitions. The column `chosen_by` marks each window as `automatic`
+or `user`. Manual windows are drawn as dashed orange lines on the charts and
+are recorded in `config.yaml`.
+
+A manual window shorter than the automatic one can be classed as not stable
+for weak ions: with few scans and a noisy signal, the absence of drift cannot
+be established.
+
 All tables and figures are also written to the `report` folder of the project
 and can be downloaded as a zip from the same tab.
 
@@ -139,6 +159,8 @@ and can be downloaded as a zip from the same tab.
 | `trace_results.csv` | Phases, trend, selected window or `no_stable_window` per trace |
 | `global_windows.csv`, `global_grid.csv` | Recommended window; stable percentage of every candidate window |
 | `group_windows.csv` | Window per target ion, compared with the global window |
+| `window_choice.csv` | Automatic and manual windows per ion, evaluated the same way; `chosen_by` marks the origin |
+| `manual_window_traces.csv` | Per acquisition: mean, RSD, slope and stability in the manual windows |
 | `window_comparison.csv` | Wide versus narrow m/z window |
 | `thresholds.json` | Noise model, RSD factor, slope limit |
 | `validation.csv`, `fixed_window.csv`, `mixed_model_*.txt` | Validation, reproducibility in the global window, dependence on intensity, m/z, reaction, run order |

@@ -24,6 +24,7 @@ import yaml
 from mzstab import cli
 from mzstab.config import DEFAULTS, _merge, load_config
 from mzstab.detect import load_detected, resolve_resolution, resolve_windows
+from mzstab.analyze import manual_window_for
 from mzstab.targets import Component, generate_targets
 
 CHARGE_COLS = {"+1": 1, "+2": 2, "-1": -1, "-2": -2}
@@ -389,6 +390,61 @@ with tabs[5]:
         if (rep / name).exists():
             col.image(str(rep / name))
 
+    st.subheader("Manual window")
+    st.caption("Optional. Set a window on acquisition time (start and end, in s) for all ions, or for single "
+               "ions in the table; a window set for one ion takes precedence. Manual windows are evaluated "
+               "with the same criteria as the automatic ones and exported with them. Empty = no manual window.")
+    manual = cfg.get("manual_windows") or {"global": None, "targets": {}}
+    all_targets = sorted(load("trace_results.csv")["target_id"].unique())
+    with st.form("manual"):
+        g1, g2, _ = st.columns([1, 1, 2])
+        gman = manual.get("global") or ["", ""]
+        g_start = g1.text_input("All ions: start, s", str(gman[0]))
+        g_end = g2.text_input("All ions: end, s", str(gman[1]))
+        per = manual.get("targets") or {}
+        man_df = pd.DataFrame({
+            "target ion": all_targets,
+            "start, s": [per.get(t, [None, None])[0] for t in all_targets],
+            "end, s": [per.get(t, [None, None])[1] for t in all_targets],
+        }).astype({"start, s": float, "end, s": float})
+        with st.expander("Per ion (optional)", expanded=bool(per)):
+            man_edit = st.data_editor(man_df, hide_index=True, width="stretch", disabled=["target ion"],
+                                      key="manual_editor")
+        if st.form_submit_button("Apply and re-analyze"):
+            try:
+                def pair(a, b, name):
+                    if a is None or b is None or (isinstance(a, float) and np.isnan(a)) or (isinstance(b, float) and np.isnan(b)):
+                        if not (a is None or (isinstance(a, float) and np.isnan(a))) or \
+                                not (b is None or (isinstance(b, float) and np.isnan(b))):
+                            raise ValueError(f"{name}: give both start and end")
+                        return None
+                    if not 0 <= a < b:
+                        raise ValueError(f"{name}: start must be 0 or more and smaller than end")
+                    return [float(a), float(b)]
+                new_manual = {"global": pair(opt_float(g_start), opt_float(g_end), "All ions"), "targets": {}}
+                for r in man_edit.to_dict("records"):
+                    w = pair(r["start, s"], r["end, s"], r["target ion"])
+                    if w:
+                        new_manual["targets"][r["target ion"]] = w
+                cfg["manual_windows"] = new_manual
+                save_cfg(root, cfg)
+                if run_steps(root, [("Analyze", cli.cmd_analyze, argparse.Namespace())]):
+                    st.rerun()
+            except ValueError as e:
+                st.error(f"Not applied: {e}")
+    choice = load("window_choice.csv")
+    if len(choice):
+        st.caption("Automatic and manual windows per ion, on acquisition time. pct_stable: acquisitions in "
+                   "which the signal is stable in that window. Also saved as window_choice.csv.")
+        ch = choice[choice["ppm"] == ppm_sel].drop(columns="ppm")
+        st.dataframe(ch, hide_index=True, width="stretch",
+                     column_config={"pct_stable": st.column_config.NumberColumn(format="%.0f"),
+                                    "median_rsd_pct": st.column_config.NumberColumn(format="%.2f"),
+                                    "median_abs_slope": st.column_config.NumberColumn(format="%.3f"),
+                                    "mean_intensity": st.column_config.NumberColumn(format="%.3e"),
+                                    "cv_pct_between_acquisitions": st.column_config.NumberColumn(format="%.2f")})
+        st.download_button("Download windows (.csv)", choice.to_csv(index=False), "window_choice.csv", "text/csv")
+
     st.subheader("Per target ion")
     grp = load("group_windows.csv")
     grp = grp[(grp["ppm"] == ppm_sel) & (grp["axis"] == axis_sel)].drop(columns=["ppm", "axis"])
@@ -410,9 +466,16 @@ with tabs[5]:
             x=x, y=y, detail="file:N", tooltip=tip)
         hi = alt.Chart(inwin.dropna(subset=["intensity"])).mark_line(color=BLUE, strokeWidth=2).encode(
             x=x, y=y, detail="file:N", tooltip=tip)
-        st.altair_chart((base + hi).properties(height=340).interactive(bind_y=False), width="stretch")
+        chart = base + hi
+        mw = manual_window_for(tid, manual)
+        if mw:
+            rules = alt.Chart(pd.DataFrame({"x": [mw[0], mw[1]]})).mark_rule(
+                color="#eb6834", strokeWidth=2, strokeDash=[5, 4]).encode(x="x:Q")
+            chart = chart + rules
+        st.altair_chart(chart.properties(height=340).interactive(bind_y=False), width="stretch")
         st.caption("One line per acquisition. Blue: the stable window selected for that acquisition. "
-                   "Acquisitions with no blue segment have no stable window.")
+                   "Acquisitions with no blue segment have no stable window."
+                   + (f" Dashed orange lines: manual window ({mw[0]:g}–{mw[1]:g} s, set for {mw[2]})." if mw else ""))
         show = ["file", "start", "length", "mean", "rsd", "rel_slope", "no_stable_window", "plateau_start_s",
                 "plateau_end_s", "trend_rel_slope", "ppm_error_median", "iso_status", "saturated", "it_at_max",
                 "unresolved", "multiple_centroids"]

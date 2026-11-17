@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 
-from .analyze import TRACE, rsd_model
+from .analyze import TRACE, manual_window_for, rsd_model
 
 SURFACE, INK, INK2, MUTED, GRID, AXIS = "#fcfcfb", "#0b0b0b", "#52514e", "#898781", "#e1e0d9", "#c3c2b7"
 BLUE, ORANGE = "#2a78d6", "#eb6834"
@@ -41,7 +41,15 @@ def _shade(ax, start, length, label):
                 ha="center", va="bottom", fontsize=8, color=INK2)
 
 
-def fig_profiles(long, summ, global_best, path):
+def _outline(ax, start, end, label):
+    """Manual window: dashed orange limits, labelled below the automatic label."""
+    for v in (start, end):
+        ax.axvline(v, color=ORANGE, lw=1.4, ls=(0, (4, 3)))
+    ax.annotate(label, ((start + end) / 2, 0.02), xycoords=("data", "axes fraction"),
+                ha="center", va="bottom", fontsize=8, color=INK2)
+
+
+def fig_profiles(long, summ, global_best, path, manual=None):
     fig, ax = plt.subplots(figsize=(7, 4))
     for _, g in long.groupby(TRACE, sort=False):
         ax.plot(g["time_s"], g["scaled"], color=MUTED, lw=0.5, alpha=0.35)
@@ -51,6 +59,8 @@ def fig_profiles(long, summ, global_best, path):
     gb = global_best[global_best["axis"] == "clock"]
     if len(gb):
         _shade(ax, gb["start"].iloc[0], gb["length"].iloc[0], "global window")
+    if manual:
+        _outline(ax, float(manual[0]), float(manual[1]), "manual window")
     ax.set(xlabel="Acquisition time (s)", ylabel="Intensity / plateau median",
            ylim=(0, max(1.6, float(np.nanmax(summ["q75"])) * 1.1)))
     ax.set_title("Scaled intensity profiles, all traces", pad=16)
@@ -132,7 +142,7 @@ def fig_mass_error(traces, ppms, path):
     _save(fig, path)
 
 
-def fig_target_traces(traces, sel, groups, out_dir: Path):
+def fig_target_traces(traces, sel, groups, out_dir: Path, manual=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     sel = sel[sel["axis"] == "clock"].set_index(TRACE)
     for tid, g in traces.groupby("target_id", sort=False):
@@ -147,6 +157,9 @@ def fig_target_traces(traces, sel, groups, out_dir: Path):
         gr = groups[(groups["target_id"] == tid) & (groups["axis"] == "clock")]
         if len(gr) and np.isfinite(gr["group_start"].iloc[0]):
             _shade(ax, gr["group_start"].iloc[0], gr["group_length"].iloc[0], "group window")
+        mw = manual_window_for(tid, manual)
+        if mw:
+            _outline(ax, mw[0], mw[1], "manual window")
         ax.set(xlabel="Acquisition time (s)", ylabel="Absolute intensity", ylim=(0, None))
         ax.set_title(f"{tid}: traces per acquisition (blue = selected stable window)", pad=16)
         _save(fig, out_dir / (re.sub(r"[^\w.+-]+", "_", tid) + ".png"))

@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import nnls
 
+from .describe import window_stats
+
 MAD = 1.4826
 TRACE = ["file", "target_id"]
 
@@ -259,3 +261,75 @@ def fixed_window_reproducibility(win: pd.DataFrame, sel: pd.DataFrame, global_be
             cv_pct_no_stable_window=cv(ns),
         ))
     return pd.DataFrame(rows)
+
+
+# ------------------------------------------------- automatic and manual windows
+def evaluate_window(traces: pd.DataFrame, start: float, end: float, thr: dict, cfg: dict) -> pd.DataFrame:
+    """Statistics and stability of every trace in one acquisition-time window."""
+    rows = []
+    for (file, tid), g in traces.groupby(TRACE, sort=False):
+        g = g.sort_values("time_s")
+        r = window_stats(g["time_s"].to_numpy(), g["intensity"].to_numpy(), start, end, cfg["windows"])
+        r["stable"] = bool(
+            r["eligible"] and r["rsd"] <= thr["rsd_factor"] * float(rsd_model(r["mean"], thr))
+            and abs(r["rel_slope"]) <= thr["slope_limit"] and r["slope_se"] <= thr["slope_limit"]
+        )
+        rows.append(dict(file=file, target_id=tid, start=start, end=end, **r))
+    return pd.DataFrame(rows)
+
+
+def _summary(ev: pd.DataFrame) -> dict:
+    m = ev["mean"].dropna()
+    return dict(
+        n_acquisitions=len(ev), n_evaluable=int(ev["eligible"].sum()),
+        pct_stable=100 * ev["stable"].mean() if len(ev) else np.nan,
+        median_rsd_pct=100 * ev.loc[ev["eligible"], "rsd"].median(),
+        median_abs_slope=ev.loc[ev["eligible"], "rel_slope"].abs().median(),
+        mean_intensity=m.mean() if len(m) else np.nan,
+        cv_pct_between_acquisitions=float(m.std(ddof=1) / m.mean() * 100) if len(m) > 1 else np.nan,
+    )
+
+
+def manual_window_for(target_id: str, manual: dict):
+    """(start, end, scope) of the user-defined window of a target, or None.
+    A window set for the target takes precedence over the one set for all ions."""
+    per = (manual or {}).get("targets") or {}
+    if per.get(target_id):
+        return float(per[target_id][0]), float(per[target_id][1]), "this ion"
+    if (manual or {}).get("global"):
+        return float(manual["global"][0]), float(manual["global"][1]), "all ions"
+    return None
+
+
+def window_choice(traces: pd.DataFrame, thr: dict, global_best: pd.DataFrame, groups: pd.DataFrame,
+                  manual: dict, cfg: dict):
+    """Per target ion, the automatic windows (global, per ion) and the manual
+    window if one is set, evaluated the same way on acquisition time.
+    Returns (summary per ion and window, per-trace table for the manual windows)."""
+    gb = global_best[global_best["axis"] == "clock"]
+    grp = groups[groups["axis"] == "clock"].set_index("target_id")
+    rows, manual_traces, cache = [], [], {}
+
+    def ev(start, end):
+        if (start, end) not in cache:
+            cache[(start, end)] = evaluate_window(traces, start, end, thr, cfg)
+        return cache[(start, end)]
+
+    for tid in sorted(traces["target_id"].unique()):
+        cands = []
+        if len(gb):
+            s = float(gb["start"].iloc[0])
+            cands.append(("automatic, all ions", "automatic", s, s + float(gb["length"].iloc[0])))
+        if tid in grp.index and np.isfinite(grp.loc[tid, "group_start"]):
+            s = float(grp.loc[tid, "group_start"])
+            cands.append(("automatic, this ion", "automatic", s, s + float(grp.loc[tid, "group_length"])))
+        mw = manual_window_for(tid, manual)
+        if mw:
+            cands.append((f"manual, {mw[2]}", "user", mw[0], mw[1]))
+        for label, by, start, end in cands:
+            e = ev(start, end)
+            e = e[e["target_id"] == tid]
+            rows.append(dict(target_id=tid, window=label, chosen_by=by, start=start, end=end, **_summary(e)))
+            if by == "user":
+                manual_traces.append(e.assign(window=label))
+    return pd.DataFrame(rows), (pd.concat(manual_traces, ignore_index=True) if manual_traces else pd.DataFrame())

@@ -151,3 +151,40 @@ def test_automatic_settings(project, tmp_path):
     cols = ["ppm", "axis", "start", "length", "n_stable", "n_traces"]
     pd.testing.assert_frame_equal(pd.read_csv(project / "report" / "global_windows.csv")[cols],
                                   pd.read_csv(tmp_path / "report" / "global_windows.csv")[cols])
+
+
+def test_manual_windows(project, tmp_path):
+    """Manual windows are evaluated like the automatic ones and exported with them."""
+    import shutil
+
+    import yaml
+
+    shutil.copytree(project / "work", tmp_path / "work")
+    for f in ("components.yaml", "samples.csv"):
+        shutil.copy(project / f, tmp_path / f)
+    cfg = yaml.safe_load((project / "config.yaml").read_text())
+    cfg["manual_windows"] = {"global": [12, 20], "targets": {"caffeine [M+H]+": [0, 6]}}
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg))
+    main(["analyze", "-c", str(tmp_path / "config.yaml")])
+    c = pd.read_csv(tmp_path / "report" / "window_choice.csv")
+    c = c[c["ppm"] == 10].set_index(["target_id", "window"])
+    # all ions: automatic windows plus the manual one
+    g = c.loc[("choline [M]+", "manual, all ions")]
+    assert (g["start"], g["end"], g["chosen_by"]) == (12, 20, "user")
+    assert g["pct_stable"] >= 60 and g["n_acquisitions"] == 8
+    assert c.loc[("choline [M]+", "automatic, all ions"), "chosen_by"] == "automatic"
+    assert ("choline [M]+", "automatic, this ion") in c.index
+    # the weakest ion is too noisy for its slope to be assessed in 8 s
+    assert c.loc[("glucose [M+Na]+", "manual, all ions"), "pct_stable"] < g["pct_stable"]
+    # the window set for one ion takes precedence; 0-6 s is the rise: not stable
+    m = c.loc[("caffeine [M+H]+", "manual, this ion")]
+    assert (m["start"], m["end"]) == (0, 6) and m["pct_stable"] == 0
+    assert ("caffeine [M+H]+", "manual, all ions") not in c.index
+    t = pd.read_csv(tmp_path / "report" / "manual_window_traces.csv")
+    assert len(t[t["ppm"] == 10]) == 32 and {"mean", "rsd", "rel_slope", "stable"} <= set(t.columns)
+    # removing the manual windows removes their export
+    cfg["manual_windows"] = {"global": None, "targets": {}}
+    (tmp_path / "config.yaml").write_text(yaml.safe_dump(cfg))
+    main(["analyze", "-c", str(tmp_path / "config.yaml")])
+    assert not (tmp_path / "report" / "manual_window_traces.csv").exists()
+    assert set(pd.read_csv(tmp_path / "report" / "window_choice.csv")["chosen_by"]) == {"automatic"}
