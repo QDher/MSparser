@@ -5,8 +5,10 @@ Rules:
 - mode "proton": charge by gain/loss of H+.
 - mode "intrinsic": charge by electron removal/addition only; the component
   also acts as a charge carrier for adducts with proton-mode molecules.
-- Adducts use entered intrinsic ions only. No default adducts, neutral losses,
-  radical ions, dimers or molecule-molecule combinations.
+- Adducts use entered species only: a molecule with entered intrinsic ions, and
+  pairs of two different components (two molecules sharing H+, or a cation
+  with an anion). No default adducts, neutral losses, radical ions or
+  combinations of a component with itself.
 """
 from __future__ import annotations
 
@@ -99,16 +101,42 @@ def _label(parts: Counter, z: int) -> str:
     return s + "]" + _charge_suffix(z)
 
 
-def generate_targets(components: list[Component]) -> pd.DataFrame:
+def _add_pairs(components: list[Component], add) -> None:
+    """Ions made of two different components."""
+    for i, a in enumerate(components):
+        for b in components[i + 1:]:
+            name, req = f"{a.name} + {b.name}", {a.name, b.name}
+            both = a.composition() + b.composition()
+            if a.mode == "proton" and b.mode == "proton":
+                # two molecules sharing H+: [M1+M2+H]+, [M1+M2-H]-, and the doubly charged forms
+                for z in (1, 2, -1, -2):
+                    s = 1 if z > 0 else -1
+                    ok = z in a.charges or z in b.charges or (abs(z) == 2 and s in a.charges and s in b.charges)
+                    comp = Counter(both)
+                    comp["H"] += z
+                    if not ok or comp["H"] < 0:
+                        continue
+                    h = ("+" if z > 0 else "-") + ("2" if abs(z) == 2 else "") + "H"
+                    add(name, f"[M1+M2{h}]" + _charge_suffix(z), z, comp, req, "pair")
+            elif a.mode == "intrinsic" and b.mode == "intrinsic":
+                # cation with anion, when the charges do not cancel: e.g. [Ca+Cl]+
+                for qa in a.charges:
+                    for qb in b.charges:
+                        z = qa + qb
+                        if qa * qb < 0 and z != 0 and abs(z) <= 2:
+                            add(name, "[M1+M2]" + _charge_suffix(z), z, both, req, "pair")
+
+
+def generate_targets(components: list[Component], pairs: bool = True) -> pd.DataFrame:
     intrinsic = [c for c in components if c.mode == "intrinsic"]
     rows = []
 
-    def add(comp_name, ion, z, comp, requires):
+    def add(comp_name, ion, z, comp, requires, kind="ion"):
         shift, ratio = best_isotopologue(comp, z)
         mz = ion_mz(comp, z)
         rows.append(
             dict(
-                target_id=f"{comp_name} {ion}", component=comp_name, ion=ion, charge=z,
+                target_id=f"{comp_name} {ion}", component=comp_name, ion=ion, charge=z, type=kind,
                 mz=mz, iso_mz=mz + shift, iso_ratio=ratio,
                 requires=";".join(sorted(requires)), use=1,
             )
@@ -142,11 +170,15 @@ def generate_targets(components: list[Component]) -> pd.DataFrame:
                             req.add(need)
                     if min(comp.values()) < 0:
                         continue  # not enough H to remove
-                    add(c.name, _label(parts, z), z, comp, req)
+                    add(c.name, _label(parts, z), z, comp, req, "adduct" if len(req) > 1 else "ion")
+    if pairs:
+        _add_pairs(components, add)
     df = pd.DataFrame(rows)
     if df.empty:
         raise ValueError("no targets generated: check charges of the components")
-    return df.sort_values(["component", "charge", "mz"]).reset_index(drop=True)
+    df = df.drop_duplicates("target_id")
+    order = df["type"].map({"ion": 0, "adduct": 1, "pair": 2})
+    return df.assign(_o=order).sort_values(["_o", "component", "charge", "mz"]).drop(columns="_o").reset_index(drop=True)
 
 
 def targets_for_file(targets: pd.DataFrame, injected: set[str] | None, polarity: int) -> pd.DataFrame:

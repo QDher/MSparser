@@ -49,6 +49,9 @@ mzML by an external tool, which must be installed separately:
 | Thermo | [ThermoRawFileParser](https://github.com/compomics/ThermoRawFileParser) | Windows, Linux, macOS |
 | Waters | msconvert ([ProteoWizard](https://proteowizard.sourceforge.io)) | Windows only for Waters files |
 
+If the converter is not on the system PATH, give the full path of its program
+under *Settings > Advanced settings > Converters*.
+
 If mzML files already exist, the converter is not needed: place them in the
 `mzml` folder of the project.
 
@@ -65,21 +68,35 @@ sidebar. Put the `.raw` files in its `raw` subfolder (or mzML files in
 | **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and charge mode. |
 | **3. Samples** | Click *Add files found*, then fill in the reaction and the components injected in each acquisition (empty = all). |
 | **4. Targets** | Generate the list of ions to follow and untick those not wanted. |
-| **5. Run** | *Convert raw files*, then *Run analysis*. The log appears below the buttons. |
+| **5. Run** | *Convert raw files*, then *Run analysis*. The log lists each converted file; an error is shown if no raw file is found, the converter is missing, or it produces no mzML. |
 | **6. Results** | Recommended window, stable percentage, thresholds, traces per ion, flags, comparison of the m/z windows, report download. |
 
 The sidebar shows which steps are complete.
 
-### Components: charge mode
+### Components: charge mode and proposed ions
 
-- **proton**: the molecule is charged by gain or loss of H⁺
+- **proton** (molecules): charged by gain or loss of H⁺
   (`[M+H]+`, `[M+2H]2+`, `[M-H]-`, `[M-2H]2-`).
-- **intrinsic**: the species is itself an ion (for example Na, or a quaternary
-  ammonium). Its charge is applied by electron mass only, and it can form
-  adducts with the other molecules (for example `[M+Na]+`).
+- **intrinsic** (species that are ions themselves, for example Na, K, Cl or a
+  quaternary ammonium): the charge is applied by electron mass only. **An ion
+  must be set to this mode to obtain its adducts with the molecules:** sodium
+  as *intrinsic, +1* gives `[M+Na]+`; chloride as *intrinsic, −1* gives
+  `[M+Cl]-`.
 
-Only entered species are used: no adduct is proposed with an ion that was not
-entered. Dimers are not generated.
+From the components, three types of ions are proposed (column `type` in the
+Targets tab):
+
+| Type | Content | Example |
+|---|---|---|
+| `ion` | One component, charged | `[M+H]+`, `Na+` |
+| `adduct` | A molecule with one or two entered ions | `[M+Na]+`, `[M+H+Na]2+`, `[M+Cl]-` |
+| `pair` | Two different components | `[M1+M2+H]+`, `[M1+M2-H]-`, a cation with an anion such as `[Ca+Cl]+` |
+
+The sign of the ion follows the polarity: positive ions are followed in
+positive-mode acquisitions, negative ions in negative-mode ones. Only entered
+species are used: no adduct is proposed with an ion that was not entered. A
+component is not combined with itself (no `[2M+H]+`), and ions made of three
+or more components are not proposed.
 
 ### Settings
 

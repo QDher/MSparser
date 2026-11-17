@@ -26,8 +26,10 @@ def _work(cfg) -> Path:
 
 
 def cmd_convert(cfg, args):
-    for c in convert_all(cfg, dry_run=args.dry_run):
-        print(" ".join(c))
+    cmds = convert_all(cfg, dry_run=args.dry_run)
+    if args.dry_run:
+        for c in cmds:
+            print(" ".join(c))
 
 
 def cmd_targets(cfg, args=None):
@@ -36,9 +38,9 @@ def cmd_targets(cfg, args=None):
     if out.exists() and not getattr(args, "force", False):
         print(f"{out} exists (kept; use --force to regenerate)")
         return
-    t = generate_targets(load_components(cfg["paths"]["components"]))
+    t = generate_targets(load_components(cfg["paths"]["components"]), cfg["targets"]["pairs"])
     t.to_csv(out, index=False)
-    print(f"{len(t)} targets written to {out}")
+    print(f"{len(t)} targets written to {out}: {t['type'].value_counts().to_dict()}")
 
 
 def cmd_ingest(cfg, args=None):

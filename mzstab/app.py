@@ -152,6 +152,12 @@ with tabs[0]:
                 st.markdown("**Folders**")
                 mzml_dir = st.text_input("Data folder (mzML or CSV files)", cfg["paths"]["mzml_dir"])
                 raw_dir = st.text_input("Raw folder (for conversion)", cfg["paths"]["raw_dir"])
+                st.markdown("**Converters**")
+                thermo_parser = st.text_input("ThermoRawFileParser program", cfg["convert"]["thermo_parser"],
+                                              help="Program name if it is on the PATH, otherwise its full path, "
+                                                   "e.g. C:\\Tools\\ThermoRawFileParser\\ThermoRawFileParser.exe")
+                msconvert = st.text_input("msconvert program (Waters)", cfg["convert"]["msconvert"],
+                                          help="Full path of msconvert.exe if it is not on the PATH")
                 st.markdown("**Conversion (Waters lock mass)**")
                 lock = st.text_input("Lock-mass m/z, positive", _txt(cfg["convert"]["lockmass_mz"]))
                 lock_neg = st.text_input("Lock-mass m/z, negative", _txt(cfg["convert"]["lockmass_mz_neg"]))
@@ -172,7 +178,9 @@ with tabs[0]:
                 cfg["paths"].update(mzml_dir=mzml_dir, raw_dir=raw_dir)
                 cfg["windows"].update(lengths_s=sorted(parse_numbers(lengths)) if lengths.strip() else "auto",
                                       step_s=opt_float(step_s) or "auto", min_scans=int(min_scans))
-                cfg["convert"].update(lockmass_mz=opt_float(lock), lockmass_mz_neg=opt_float(lock_neg))
+                cfg["convert"].update(lockmass_mz=opt_float(lock), lockmass_mz_neg=opt_float(lock_neg),
+                                      thermo_parser=thermo_parser.strip() or "ThermoRawFileParser",
+                                      msconvert=msconvert.strip() or "msconvert")
                 cfg["csv"].update(time_unit=csv_unit, polarity=int(csv_pol))
                 save_cfg(root, cfg)
                 st.success("Settings saved.")
@@ -202,9 +210,15 @@ with tabs[0]:
 
 # --------------------------------------------------------------- components
 with tabs[1]:
-    st.caption("Enter every injected molecule or ion as a neutral formula. Tick the charge states that are "
-               "possible. Mode 'proton': charge by gain or loss of H⁺. Mode 'intrinsic': the species is itself "
-               "an ion (e.g. Na, a quaternary ammonium) and can form adducts with the other molecules.")
+    st.caption("Enter every injected molecule or ion as a neutral formula and tick the charge states that are "
+               "possible.")
+    st.markdown(
+        "- **Charge mode 'proton'** (molecules): charged by gain or loss of H⁺, e.g. [M+H]⁺, [M−H]⁻.\n"
+        "- **Charge mode 'intrinsic'** (species that are ions themselves: Na, K, Cl, a quaternary ammonium…): "
+        "charged without H⁺. **Set this mode for an ion to obtain its adducts with the molecules**, "
+        "e.g. sodium as *intrinsic, +1* gives [M+Na]⁺; chloride as *intrinsic, −1* gives [M+Cl]⁻.\n"
+        "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
+        "([M1+M2+H]⁺), or a cation with an anion.")
     cp = Path(paths["components"])
     rows = []
     if cp.exists():
@@ -238,7 +252,7 @@ with tabs[1]:
                 out.append({"name": name, "formula": c.formula, "charges": charges, "mode": mode})
             if len({c.name for c in comps}) != len(comps):
                 raise ValueError("component names must be unique")
-            generate_targets(comps)
+            generate_targets(comps, cfg["targets"]["pairs"])
             cp.write_text(yaml.safe_dump({"components": out}, sort_keys=False))
             st.success(f"{len(out)} components saved. Regenerate the targets in tab 4.")
         except Exception as e:
@@ -288,10 +302,21 @@ with tabs[3]:
     if tp.exists():
         t = pd.read_csv(tp)
         t["use"] = t["use"].astype(bool)
+        if "type" in t:
+            n = t["type"].value_counts()
+            st.caption(f"{len(t)} ions: {n.get('ion', 0)} of single components, {n.get('adduct', 0)} adducts of a "
+                       f"molecule with an entered ion, {n.get('pair', 0)} made of two components. Positive ions "
+                       "are followed in positive-mode acquisitions, negative ions in negative-mode ones.")
+            cps = (yaml.safe_load(Path(paths["components"]).read_text()) or {}).get("components", []) \
+                if Path(paths["components"]).exists() else []
+            if cps and not any(c.get("mode") == "intrinsic" for c in cps):
+                st.warning("No component has the charge mode 'intrinsic', so no adduct with an entered ion "
+                           "(such as [M+Na]⁺) is proposed. If a component is an ion (Na, K, Cl…), set its "
+                           "charge mode to 'intrinsic' in tab 2 and regenerate the targets.")
         t_edit = st.data_editor(
             t, width="stretch", hide_index=True, key="targets_editor",
             disabled=[c for c in t.columns if c != "use"],
-            column_order=["use", "component", "ion", "charge", "mz", "iso_mz", "iso_ratio", "requires"],
+            column_order=["use", "type", "component", "ion", "charge", "mz", "iso_mz", "iso_ratio", "requires"],
             column_config={"mz": st.column_config.NumberColumn("m/z", format="%.5f"),
                            "iso_mz": st.column_config.NumberColumn("isotope m/z", format="%.5f"),
                            "iso_ratio": st.column_config.NumberColumn("isotope ratio", format="%.4f"),
@@ -305,8 +330,10 @@ with tabs[4]:
     ready = status["Components"] and status["Samples"]
     if not ready:
         st.warning("Save the components (tab 2) and the samples (tab 3) first.")
-    st.caption("Conversion needs ThermoRawFileParser or msconvert installed. It is skipped for files that "
-               "already have an mzML. If mzML files are already in the mzML folder, start at 'Run analysis'.")
+    st.caption("Conversion needs ThermoRawFileParser or msconvert installed (program path under Settings > "
+               "Advanced settings > Converters). It is skipped for files that already have an mzML. If mzML "
+               "files are already in the data folder, start at 'Run analysis'.")
+    st.caption(f"Raw folder: {paths['raw_dir']} — data folder: {paths['mzml_dir']}")
     b = st.columns(5)
     none = argparse.Namespace(force=False, dry_run=False)
     if b[0].button("Convert raw files", disabled=not ready):

@@ -31,6 +31,7 @@ DEFAULTS = {
         "polarity": 1,          # +1 or -1 (not stored in CSV)
         "time_col": None, "mz_col": None, "intensity_col": None, "scan_col": None,
     },
+    "targets": {"pairs": True},  # also propose ions made of two different components
     "scan_filter": {
         "ms_level": 1,
         "functions": None,  # Waters functions to keep; None = function 1 for Waters files

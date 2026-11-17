@@ -188,3 +188,60 @@ def test_manual_windows(project, tmp_path):
     main(["analyze", "-c", str(tmp_path / "config.yaml")])
     assert not (tmp_path / "report" / "manual_window_traces.csv").exists()
     assert set(pd.read_csv(tmp_path / "report" / "window_choice.csv")["chosen_by"]) == {"automatic"}
+
+
+def test_pair_targets():
+    comps = [
+        Component("caffeine", "C8H10N4O2", (1,), "proton"),
+        Component("glucose", "C6H12O6", (1, -1), "proton"),
+        Component("calcium", "Ca", (2,), "intrinsic"),
+        Component("chloride", "Cl", (-1,), "intrinsic"),
+    ]
+    t = generate_targets(comps).set_index("target_id")
+    p = t.loc["caffeine + glucose [M1+M2+H]+"]
+    assert p["mz"] == pytest.approx(194.080376 + 180.063388 + 1.007276, abs=2e-5)
+    assert p["type"] == "pair" and p["requires"] == "caffeine;glucose"
+    assert "caffeine + glucose [M1+M2-H]-" in t.index          # glucose allows -1
+    assert "caffeine + glucose [M1+M2+2H]2+" in t.index        # both allow +1
+    assert "caffeine + glucose [M1+M2-2H]2-" not in t.index    # caffeine does not allow -1
+    assert t.loc["calcium + chloride [M1+M2]+", "mz"] == pytest.approx(39.962591 + 34.968853 - 0.000549, abs=2e-5)
+    assert t.loc["glucose [M+Cl]-", "type"] == "adduct" and t.loc["caffeine [M+H]+", "type"] == "ion"
+    assert not any("caffeine + caffeine" in i for i in t.index)  # no component with itself
+    assert (generate_targets(comps, pairs=False)["type"] != "pair").all()
+
+
+def test_convert_reports_and_fails_clearly(tmp_path, capsys):
+    import stat
+
+    from mzstab.config import load_config
+    from mzstab.convert import convert_all
+
+    (tmp_path / "config.yaml").write_text("vendor: thermo\n")
+    cfg = load_config(tmp_path / "config.yaml")
+    with pytest.raises(FileNotFoundError, match="raw folder not found"):
+        convert_all(cfg)
+    (tmp_path / "raw").mkdir()
+    with pytest.raises(FileNotFoundError, match="no .raw file"):
+        convert_all(cfg)
+    (tmp_path / "raw" / "runA.RAW").write_text("x")       # upper-case extension
+    with pytest.raises(FileNotFoundError, match="converter not found"):
+        convert_all(cfg)
+
+    def fake(name, body):
+        p = tmp_path / name
+        p.write_text("#!/bin/sh\n" + body)
+        p.chmod(p.stat().st_mode | stat.S_IEXEC)
+        return str(p)
+
+    # a converter that exits normally without writing the mzML is an error
+    cfg["convert"]["thermo_parser"] = fake("silent", "echo license missing\nexit 0\n")
+    with pytest.raises(RuntimeError, match="did not produce runA.mzML(.|\n)*license missing"):
+        convert_all(cfg)
+    # a working converter: -i=<raw> -o=<dir>
+    cfg["convert"]["thermo_parser"] = fake(
+        "good", 'i=${1#-i=}; o=${2#-o=}; b=$(basename "$i"); echo data > "$o/${b%.*}.mzML"\n')
+    convert_all(cfg)
+    assert (tmp_path / "mzml" / "runA.mzML").exists()
+    assert "runA.RAW -> runA.mzML" in capsys.readouterr().out
+    convert_all(cfg)
+    assert "already converted" in capsys.readouterr().out
