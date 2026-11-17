@@ -143,8 +143,8 @@ time, or time after signal onset):
 
 - the **recommended global window** and the percentage of traces that are
   stable in it;
-- the **stability limits** (RSD limit, default 12 × the noise model; slope
-  limit, default 2 % per second), editable, with the figures to inspect them.
+- the **stability limits** (RSD limit and slope limit), derived from the data
+  by default and shown in editable fields, with the figures to inspect them.
   Changing them and re-analyzing updates every table and exported file;
 - a **table per target ion**: its own window, compared with the global one;
 - a **table per acquisition**: the number of analyzed ions, how many have a
@@ -206,10 +206,11 @@ and can be downloaded as a zip from the same tab.
 4. Each trace is **described**: rise, plateau and decay; mean, RSD and slope
    in sliding windows of several lengths.
 5. **Limits.** The most stable window of each trace gives a noise model
-   (`RSD² = a/I + b`, the typical RSD at a given intensity). The RSD limit is
-   12 times this model and the slope limit is 2 % of the mean intensity per
-   second. Both values are shown and can be changed in the Results tab; left
-   empty, they are derived from the spread of the most stable windows.
+   (`RSD² = a/I + b`, the typical RSD at a given intensity) and the spread of
+   RSD and slope among these windows. From these, the RSD limit (a multiple
+   of the noise model) and the slope limit (% of the mean intensity per
+   second) are derived. Both are displayed in the Results tab and can be
+   replaced by values chosen by the user.
 6. A window is **stable** if its RSD and slope are within the limits and its
    slope is estimated precisely enough. Per trace, the stable window with the
    lowest RSD/√n is selected. The global and per-ion windows are those stable

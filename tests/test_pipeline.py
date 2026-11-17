@@ -301,9 +301,9 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
     assert len(r[(r["ppm"] == 10) & (r["axis"] == "clock")]) == 2
     thr = json.loads((b / "report" / "thresholds.json").read_text())["ppm10"]
     assert thr["n_traces"] == 2 and thr["model"] == "constant" and thr["slope_limit_derived"] > 0
-    # default limits: 12 x the noise model and 2 % per second, derived values kept for reference
-    assert (thr["rsd_factor"], thr["slope_limit"]) == (12.0, 2.0)
-    assert thr["rsd_factor_source"] == thr["slope_limit_source"] == "setting"
+    # by default the limits are derived from the data
+    assert thr["rsd_factor_source"] == thr["slope_limit_source"] == "data"
+    assert thr["rsd_factor"] == thr["rsd_factor_derived"] and thr["slope_limit"] == thr["slope_limit_derived"]
     assert not r.loc[(r["ppm"] == 10) & (r["axis"] == "clock"), "no_stable_window"].all()
 
 

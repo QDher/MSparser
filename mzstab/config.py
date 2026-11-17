@@ -56,10 +56,10 @@ DEFAULTS = {
     "phases": {"plateau_fraction": 0.8, "onset_fraction": 0.1, "penalty_factor": 3.0},
     "thresholds": {
         "n_sigma": 3.0, "reference_length_s": None, "min_rsd_factor": 1.5,
-        # Stability limits. A number is used as given; "auto" derives the value
-        # from the data (spread of the most stable window of each trace).
-        "rsd_factor": 12.0,   # RSD limit = this factor x the noise model
-        "slope_limit": 2.0,   # maximum |slope|, in % of the mean intensity per second
+        # Stability limits. "auto" derives the value from the data (spread of the
+        # most stable window of each trace); a number is used as given.
+        "rsd_factor": "auto",   # RSD limit = this factor x the noise model
+        "slope_limit": "auto",  # maximum |slope|, in % of the mean intensity per second
     },
     # Windows set by the user, on acquisition time, as [start_s, end_s].
     # "targets" maps a target_id to its own window and takes precedence.
