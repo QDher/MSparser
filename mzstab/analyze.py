@@ -48,7 +48,10 @@ def derive_thresholds(win: pd.DataFrame, cfg: dict) -> dict:
     resid = np.log(rsd / rsd_model(mean, thr))
     spread = MAD * np.median(np.abs(resid - np.median(resid)))
     thr["rsd_factor"] = float(max(np.exp(np.median(resid) + tc["n_sigma"] * spread), tc["min_rsd_factor"]))
-    thr["slope_limit"] = float(tc["n_sigma"] * MAD * np.median(np.abs(best["rel_slope"])))
+    # spread of the slopes of the most stable windows; not below the precision
+    # with which a slope can be measured in such a window (matters with few traces)
+    thr["slope_limit"] = float(tc["n_sigma"] * max(MAD * np.median(np.abs(best["rel_slope"])),
+                                                    np.median(best["slope_se"])))
     return thr
 
 
@@ -79,14 +82,26 @@ def select_trace_windows(win: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def _count_traces(df: pd.DataFrame, by: list[str], name: str) -> pd.DataFrame:
+    if df.empty:
+        return pd.DataFrame(columns=by + [name])
+    cols = by + [c for c in TRACE if c not in by]
+    return df[cols].drop_duplicates().groupby(by).size().rename(name).reset_index()
+
+
+GRID_COLUMNS = ["length", "start", "n_stable", "median_sem", "n_traces", "n_with_stable", "pct_all", "pct_with_stable"]
+
+
 def window_grid(win: pd.DataFrame, by: list[str] | None = None) -> pd.DataFrame:
-    """Percentage of traces that are stable in each candidate window."""
+    """Percentage of traces that are stable in each candidate window. Empty
+    (with its columns) when no window is stable in any trace."""
     by = (by or []) + ["axis"]
-    n_all = win.groupby(by)[TRACE].apply(lambda d: len(d.drop_duplicates())).rename("n_traces")
     st = win[win["stable"]]
-    n_with = st.groupby(by)[TRACE].apply(lambda d: len(d.drop_duplicates())).rename("n_with_stable")
+    if st.empty:
+        return pd.DataFrame(columns=by + GRID_COLUMNS)
     g = st.groupby(by + ["length", "start"]).agg(n_stable=("sem", "size"), median_sem=("sem", "median"))
-    g = g.reset_index().merge(n_all.reset_index(), on=by).merge(n_with.reset_index(), on=by)
+    g = (g.reset_index().merge(_count_traces(win, by, "n_traces"), on=by)
+         .merge(_count_traces(st, by, "n_with_stable"), on=by))
     g["pct_all"] = 100 * g["n_stable"] / g["n_traces"]
     g["pct_with_stable"] = 100 * g["n_stable"] / g["n_with_stable"]
     return g

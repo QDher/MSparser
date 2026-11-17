@@ -258,3 +258,39 @@ def test_converter_setting_may_be_a_folder(tmp_path):
     exe.write_text("x")
     assert _program(str(tmp_path), "thermo_parser") == [str(exe)]      # found in a subfolder
     assert _program(f'"{exe}"', "thermo_parser") == [str(exe)]          # quoted full path
+
+
+def test_no_stable_window_and_few_traces(project, tmp_path):
+    """The analysis completes when no window is stable, and with one or two traces."""
+    import shutil
+
+    import yaml
+
+    # (a) thresholds that no window can meet
+    a = tmp_path / "a"
+    shutil.copytree(project / "work", a / "work")
+    for f in ("components.yaml", "samples.csv"):
+        shutil.copy(project / f, a / f)
+    cfg = yaml.safe_load((project / "config.yaml").read_text())
+    cfg["thresholds"] = {"override": {"slope_limit": 1e-9}}
+    (a / "config.yaml").write_text(yaml.safe_dump(cfg))
+    main(["analyze", "-c", str(a / "config.yaml")])
+    r = pd.read_csv(a / "report" / "trace_results.csv")
+    assert r["no_stable_window"].all()
+    assert not (a / "report" / "global_windows.csv").exists()
+
+    # (b) two acquisitions, one component: two traces per ppm setting
+    b = tmp_path / "b"
+    (b / "mzml").mkdir(parents=True)
+    for f in ("run01", "run02"):
+        shutil.copy(project / "mzml" / f"{f}.mzML", b / "mzml")
+    (b / "samples.csv").write_text("file\nrun01\nrun02\n")
+    (b / "components.yaml").write_text(
+        "components:\n  - {name: caffeine, formula: C8H10N4O2, charges: [1], mode: molecule}\n")
+    (b / "config.yaml").write_text("extraction:\n  ppm_windows: [10, 5]\n")
+    main(["run", "-c", str(b / "config.yaml")])
+    r = pd.read_csv(b / "report" / "trace_results.csv")
+    assert len(r[(r["ppm"] == 10) & (r["axis"] == "clock")]) == 2
+    thr = json.loads((b / "report" / "thresholds.json").read_text())["ppm10"]
+    assert thr["n_traces"] == 2 and thr["model"] == "constant" and thr["slope_limit"] > 0
+    assert not r.loc[(r["ppm"] == 10) & (r["axis"] == "clock"), "no_stable_window"].all()

@@ -101,7 +101,7 @@ status = {
     "Samples": Path(paths["samples"]).exists(),
     "Targets": (work / "targets.csv").exists(),
     "Traces": (work / "traces.parquet").exists(),
-    "Report": (rep / "global_windows.csv").exists(),
+    "Report": (rep / "trace_results.csv").exists(),
 }
 for name, done in status.items():
     st.sidebar.write(("✅ " if done else "⬜ ") + name)
@@ -366,21 +366,27 @@ def load(name):
 
 with tabs[5]:
     gw = load("global_windows.csv")
-    if gw.empty:
+    res_all = load("trace_results.csv")
+    if res_all.empty:
         st.info("No results yet. Run the analysis in tab 5.")
         st.stop()
+    if gw.empty:
+        gw = pd.DataFrame(columns=["ppm", "axis", "start", "length", "pct_all", "pct_with_stable", "n_traces"])
     c = st.columns([1, 1, 3])
-    ppm_sel = c[0].selectbox("m/z window (± ppm)", sorted(gw["ppm"].unique(), reverse=True),
+    ppm_sel = c[0].selectbox("m/z window (± ppm)", sorted(res_all["ppm"].unique(), reverse=True),
                              format_func=lambda v: f"{v:g}")
     axis_sel = c[1].selectbox("Time axis", ["clock", "onset"],
                               format_func={"clock": "Acquisition time", "onset": "Time after signal onset"}.get)
     tag = f"ppm{ppm_sel:g}"
-    res = load("trace_results.csv")
-    res = res[(res["ppm"] == ppm_sel) & (res["axis"] == axis_sel)]
+    res = res_all[(res_all["ppm"] == ppm_sel) & (res_all["axis"] == axis_sel)]
     g = gw[(gw["ppm"] == ppm_sel) & (gw["axis"] == axis_sel)]
     thr_all = json.loads((rep / "thresholds.json").read_text())
     thr = thr_all.get(tag, {})
 
+    if thr.get("n_traces", 99) < 5:
+        st.warning(f"Only {thr.get('n_traces')} trace(s) could be analyzed with this m/z window, so the thresholds "
+                   "derived from the data are not reliable. See 'Detection and flags' below for the ions that "
+                   "were not detected; add acquisitions, or set the thresholds manually.")
     st.subheader("Global window")
     m = st.columns(4)
     if len(g):

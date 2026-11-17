@@ -118,6 +118,9 @@ def cmd_analyze(cfg, args=None):
         if w_raw.empty:
             continue
         thr = an.derive_thresholds(w_raw, cfg)
+        if thr["n_traces"] < 5:
+            print(f"ppm {ppm:g}: thresholds derived from only {thr['n_traces']} trace(s); they are not reliable. "
+                  "Check trace_summary for undetected targets, add acquisitions, or set the thresholds manually.")
         for key, val in (cfg["thresholds"].get("override") or {}).items():
             if val is not None and key in ("rsd_factor", "slope_limit"):
                 thr[f"{key}_derived"], thr[key] = thr[key], float(val)
@@ -179,6 +182,8 @@ def cmd_analyze(cfg, args=None):
         comparison.to_csv(rep / "window_comparison.csv", index=False)
 
     gw = pd.concat(tables["global_windows"]) if tables["global_windows"] else pd.DataFrame()
+    if gw.empty:
+        print("no window is stable in any trace: no window is recommended")
     for r in gw.itertuples(index=False):
         ref = "acquisition time" if r.axis == "clock" else "time after signal onset"
         print(f"ppm {r.ppm:g} | {ref}: global window {r.start:g}-{r.start + r.length:g} s, "
