@@ -1,0 +1,39 @@
+# Reusable job: tests, builds the packaged application on one system and,
+# if a tag is given, attaches the zip to the GitHub release of that tag.
+name: build-one
+on:
+  workflow_call:
+    inputs:
+      os: {required: true, type: string}
+      label: {required: true, type: string}
+      tag: {required: false, type: string, default: ""}
+jobs:
+  build:
+    runs-on: ${{ inputs.os }}
+    defaults:
+      run:
+        shell: bash
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ".[ui,test]" pyinstaller
+      - run: python -m pytest -q
+      - run: pyinstaller --noconfirm packaging/mzstab.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mzstab-app-${{ inputs.label }}
+          path: dist/mzstab-app
+      - name: Attach to release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ZIP="mzstab-app-${{ inputs.label }}-${TAG}"
+          python -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'dist', 'mzstab-app')" "$ZIP"
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" \
+            --prerelease --title "mzstab $TAG" --notes-file packaging/release_notes.md || true
+          gh release upload "$TAG" "$ZIP.zip" --clobber

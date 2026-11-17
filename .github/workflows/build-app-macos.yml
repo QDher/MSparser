@@ -1,0 +1,34 @@
+# Builds the packaged application for macOS (Apple silicon and Intel).
+#
+# Start it from the Actions tab ("Run workflow"):
+# - release_tag empty: the builds are kept as workflow artifacts only.
+# - release_tag set (for example v1.0): the builds are also attached to the
+#   GitHub release of that tag, which is created as a pre-release if needed.
+# Pushing a tag such as v1.0 has the same effect as setting release_tag.
+name: build-app-macos
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Version tag of the release to attach the builds to (e.g. v1.0). Empty = build only."
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {os: macos-latest, label: macos-arm64}
+          - {os: macos-15-intel, label: macos-x64}
+    uses: ./.github/workflows/_build.yml
+    with:
+      os: ${{ matrix.os }}
+      label: ${{ matrix.label }}
+      tag: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+# Note: GitHub drops a macOS job if no runner is assigned within 15 minutes
+# ("capacity constraints"). In that case, start this workflow again later.

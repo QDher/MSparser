@@ -217,11 +217,22 @@ Linux or macOS:
 bash packaging/build.sh
 ```
 
-The result is the folder `dist/mzstab-app` (about 550 MB). The workflow
-`.github/workflows/build-app.yml` builds the three systems on GitHub Actions
-when started from the Actions tab. To publish a release, enter a version tag
-(for example `v0.1.0`) in the *release_tag* field: the builds are then attached
-to the GitHub release of that tag. The vendor converters are not included.
+The result is the folder `dist/mzstab-app` (about 550 MB). The vendor
+converters are not included.
+
+Two workflows build the application on GitHub Actions, started from the
+Actions tab:
+
+| Workflow | Systems |
+|---|---|
+| `build-app` | Windows, Linux |
+| `build-app-macos` | macOS, Apple silicon and Intel |
+
+To attach the builds to a release, enter its version tag (for example `v1.0`)
+in the *release_tag* field. macOS is separate because GitHub drops a macOS job
+when no runner is available within 15 minutes; in that case, start
+`build-app-macos` again later. On a Mac, `bash packaging/build.sh` builds the
+application locally.
 
 ### Tests
 
