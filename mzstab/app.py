@@ -115,12 +115,11 @@ def _txt(v) -> str:
 
 
 with tabs[0]:
-    st.caption("Only the m/z windows need to be chosen. The other settings are read from the data files "
-               "or use default values; they can be changed under 'Advanced settings'.")
+    st.caption("No setting has to be entered. Ions are extracted within ±15 ppm of their theoretical m/z, and "
+               "the other settings are read from the data files or use default values. All can be changed "
+               "under 'Advanced settings'.")
     detected = load_detected(work)
     with st.form("settings"):
-        ppm = st.text_input("m/z windows, ± ppm (all are run and compared)",
-                            ", ".join(f"{p:g}" for p in cfg["extraction"]["ppm_windows"]))
         with st.expander("Advanced settings (leave empty for automatic)"):
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -148,6 +147,9 @@ with tabs[0]:
                 min_scans = st.number_input("Minimum scans per window", value=int(cfg["windows"]["min_scans"]),
                                             min_value=3, step=1)
                 st.markdown("**m/z extraction**")
+                ppm = st.text_input("m/z window, ± ppm", ", ".join(f"{p:g}" for p in cfg["extraction"]["ppm_windows"]),
+                                    help="Default 15. Several values separated by commas (e.g. 10, 5) are "
+                                         "all run and compared in the Results tab.")
                 min_mda = st.number_input("Minimum half-width, mDa", value=float(cfg["extraction"]["min_window_mda"]),
                                           step=0.1, format="%.2f")
                 min_run = st.number_input("Detection: consecutive scans", value=int(cfg["extraction"]["min_consecutive_scans"]),
@@ -173,7 +175,7 @@ with tabs[0]:
                 cfg["vendor"] = vendor
                 cfg["resolution"] = {"value": opt_float(res_value) or "auto", "at_mz": res_at}
                 cfg["extraction"].update(
-                    ppm_windows=sorted(parse_numbers(ppm), reverse=True), min_window_mda=min_mda,
+                    ppm_windows=sorted(parse_numbers(ppm) if ppm.strip() else [15.0], reverse=True), min_window_mda=min_mda,
                     min_consecutive_scans=int(min_run), max_injection_time_ms=opt_float(max_it),
                     saturation_intensity=opt_float(sat))
                 cfg["scan_filter"]["functions"] = [int(x) for x in parse_numbers(functions)] if functions.strip() else None

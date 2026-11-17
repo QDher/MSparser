@@ -65,7 +65,7 @@ right:
 
 | Tab | What to do |
 |---|---|
-| **1. Settings** | Enter the m/z windows (default ±10 and ±5 ppm). Everything else is read from the data files or uses a default; see below. |
+| **1. Settings** | Nothing has to be entered: all settings are read from the data files or use a default; see below. |
 | **2. Components** | Enter every injected molecule or ion: name, neutral formula, possible charge states (+1, +2, −1, −2) and type (molecule or ion). |
 | **3. Samples** | Give the folder containing the raw files (a subfolder of the project folder, or a full path) and the folder for the converted files. Click *Add files found in these folders*, then fill in the reaction and the components injected in each acquisition (empty = all). |
 | **4. Targets** | Generate the list of ions to follow and untick those not wanted. |
@@ -107,11 +107,12 @@ or more components are not proposed.
 
 ### Settings
 
-Only the m/z windows have to be chosen. The other settings are automatic and
+No setting has to be entered. The values below are used automatically and
 can be changed under *Advanced settings*:
 
 | Setting | Automatic value |
 |---|---|
+| m/z window | ±15 ppm around the theoretical m/z. Several values (for example `10, 5`) are all run and compared |
 | Vendor | Recognised from the files (Thermo or Waters) |
 | Polarity, scan range | Read from the files |
 | Window lengths | From the scan rate and the acquisition duration: lengths holding at least the minimum number of scans and no longer than 60 % of the shortest acquisition |

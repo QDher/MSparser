@@ -37,7 +37,7 @@ DEFAULTS = {
         "functions": None,  # Waters functions to keep; None = function 1 for Waters files
     },
     "extraction": {
-        "ppm_windows": [10, 5],
+        "ppm_windows": [15],            # several values are all run and compared
         "min_window_mda": 0.5,          # absolute half-width floor at low m/z
         "min_consecutive_scans": 5,     # detection criterion
         "multi_centroid_fraction": 0.1,

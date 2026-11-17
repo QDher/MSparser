@@ -8,5 +8,5 @@ paths:
   mzml_dir: ../mzml_thermo
   work_dir: ../work_thermo
   report_dir: ../report_thermo
-extraction:
-  ppm_windows: [10, 5]        # both are run and compared
+# extraction:
+#   ppm_windows: [10, 5]      # default is [15]; several values are all run and compared
