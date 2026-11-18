@@ -64,6 +64,20 @@ DEFAULTS = {
     # Windows set by the user, on acquisition time, as [start_s, end_s].
     # "targets" maps a target_id to its own window and takes precedence.
     "manual_windows": {"global": None, "targets": {}},
+    # Intensity-extraction mode (see intensity.py)
+    "mode": "stability",  # stability | intensity
+    "intensity": {
+        "ppm_steps": [5, 10, 15, 20],   # tried in this order; the first with a signal is used
+        "min_scans": 5,                 # consecutive scans required to report a peak
+        "window_length_s": 10.0,        # fixed window; the most stable one is used
+        "window_step_s": 1.0,
+        "variation_flag_pct": 25.0,     # flag when 10 s windows differ by this much
+        "rsd_flag_pct": 30.0,           # flag "low stability" above this RSD
+        "peak_width_ppm": 1.0,          # m/z scatter of one peak between scans
+        "min_relative_intensity": 0.10, # other peaks reported if >= this x the most intense
+        "default_peak": "closest",      # closest | most_intense
+        "jobs": 1,                      # parallel processes (command line only)
+    },
     "validation": {"test_fraction": 0.5, "seed": 0, "min_files": 4},
 }
 

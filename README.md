@@ -195,6 +195,52 @@ and can be downloaded as a zip from the same tab.
 | `validation.csv`, `fixed_window.csv`, `mixed_model_*.txt` | Validation, reproducibility in the global window, dependence on intensity, m/z, reaction, run order |
 | `*.png`, `traces_ppm*/` | Figures |
 
+## Intensity extraction mode
+
+A second mode, chosen in the sidebar, reports the intensity of every possible
+ion in every file, whatever its stability. It is meant for many files.
+
+| Tab | What to do |
+|---|---|
+| **1. Components** | Same as in the stability mode. |
+| **2. Files** | Give the folder of the raw files and the folder of the converted files. Subfolders are included, so the data can be organised in any folder tree; the tree is reproduced at conversion. |
+| **3. Targets** | Same as in the stability mode. |
+| **4. Extract** | Adjust the settings if needed and click *Extract intensities*. Files already processed with the same settings are reused. |
+| **5. Results** | Intensity table, choice of the peak, detail of one ion in one file, downloads. |
+
+How a value is obtained, for each ion in each file:
+
+1. **Adaptive m/z window.** The windows (default ±5, 10, 15, 20 ppm) are tried
+   in increasing order; the first one containing a signal is used and
+   reported. A signal is a peak present in at least 5 consecutive scans
+   (1, 3 or 5, configurable).
+2. **Candidate peaks.** Inside that window the peaks are separated. The one
+   closest to the theoretical m/z, the most intense one, and any peak of at
+   least 10 % of the most intense are listed. By default the closest is
+   exported; the rule can be changed to the most intense, and the peak can be
+   chosen by hand for single ions and files.
+3. **Intensity.** The mean over the most stable 10 s window of the
+   acquisition (the one with the lowest RSD).
+4. **Flags.** Nothing is excluded. Each value carries its RSD, the spread
+   between the 10 s windows of the acquisition, the m/z window used and the
+   mass error, with these flags: `low_stability` (RSD above 30 %),
+   `window_variation` (windows differing by 25 % or more), `gaps`,
+   `multiple_peaks`, `wide_mz_window`, `isotope_mismatch`, `saturated`,
+   `short_acquisition`.
+
+Output files in the `report` folder:
+
+| File | Content |
+|---|---|
+| `intensity_matrix.csv` | Files as rows, ions as columns, intensities as values |
+| `intensity_values.csv` | One row per file and ion: intensity, flags, RSD, variation, m/z window, mass error, window used; undetected ions are listed with their status |
+| `intensity_peaks.csv` | All candidate peaks, with the one selected |
+| `intensity_window_means.csv` | Mean, RSD and slope of every 10 s window of every reported peak |
+| `intensity_files.csv` | Per file: folder, processing status or error, polarity, scan range, scan rate |
+
+Command line: `mzstab intensity -c config.yaml` (with `mode: intensity` in the
+configuration); `--jobs N` processes N files in parallel.
+
 ## How it works
 
 1. **Targets** are computed from the entered components (monoisotopic m/z).

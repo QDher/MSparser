@@ -26,7 +26,7 @@ def _work(cfg) -> Path:
 
 
 def cmd_convert(cfg, args):
-    cmds = convert_all(cfg, dry_run=args.dry_run)
+    cmds = convert_all(cfg, dry_run=getattr(args, "dry_run", False), recursive=cfg["mode"] == "intensity")
     if args.dry_run:
         for c in cmds:
             print(" ".join(c))
@@ -197,6 +197,57 @@ def cmd_analyze(cfg, args=None):
     print(f"report written to {rep}")
 
 
+def write_intensity_outputs(cfg) -> dict:
+    """Apply the choice of peaks and write the intensity tables. Uses the
+    candidates saved by the last run, so it is fast."""
+    from . import intensity as it
+
+    work, rep = _work(cfg), Path(cfg["paths"]["report_dir"])
+    rep.mkdir(parents=True, exist_ok=True)
+    cands = pd.read_parquet(work / "intensity_candidates.parquet")
+    files = pd.read_parquet(work / "intensity_files.parquet")
+    sel_path = work / "peak_selection.csv"
+    selection = pd.read_csv(sel_path) if sel_path.exists() else None
+    cands = it.apply_selection(cands, selection, cfg) if len(cands) else cands
+    out = it.build_outputs(cands, files)
+    cands.to_csv(rep / "intensity_peaks.csv", index=False)
+    out["long"].to_csv(rep / "intensity_values.csv", index=False)
+    out["matrix"].to_csv(rep / "intensity_matrix.csv", index=False)
+    files.to_csv(rep / "intensity_files.csv", index=False)
+    return dict(candidates=cands, files=files, **out)
+
+
+def cmd_intensity(cfg, args=None, progress=None):
+    """Intensity extraction: every target ion in every file below the data folder."""
+    from . import intensity as it
+
+    work, rep = _work(cfg), Path(cfg["paths"]["report_dir"])
+    if getattr(args, "jobs", None):
+        cfg["intensity"]["jobs"] = args.jobs
+    if not (work / "targets.csv").exists():
+        cmd_targets(cfg)
+    targets = pd.read_csv(work / "targets.csv")
+    res = it.run_batch(cfg, targets, progress)
+    res["candidates"].to_parquet(work / "intensity_candidates.parquet", index=False)
+    res["files"].to_parquet(work / "intensity_files.parquet", index=False)
+    res["traces"].to_parquet(work / "intensity_traces.parquet", index=False)
+    rep.mkdir(parents=True, exist_ok=True)
+    res["windows"].to_csv(rep / "intensity_window_means.csv", index=False)
+    out = write_intensity_outputs(cfg)
+    f, long = out["files"], out["long"]
+    n = f["processing"].value_counts().to_dict()
+    print(f"{len(f)} file(s): {n.get('processed', 0)} processed, {n.get('cached', 0)} unchanged (reused), "
+          f"{n.get('failed', 0)} failed")
+    for r in f[f["processing"] == "failed"].itertuples(index=False):
+        print(f"  FAILED {r.file}: {r.error}")
+    if len(long):
+        det = long[long["status"] == "detected"]
+        print(f"{len(det)} intensity value(s) for {det['target_id'].nunique()} ion(s); "
+              f"{int((det['flags'] != '').sum())} flagged; "
+              f"{int((long['status'] == 'not detected').sum())} not detected")
+    print(f"tables written to {rep}")
+
+
 def cmd_run(cfg, args=None):
     cmd_targets(cfg)
     cmd_ingest(cfg)
@@ -222,12 +273,15 @@ def main(argv=None):
         ("extract", cmd_extract, "extract ion traces and QC flags"),
         ("analyze", cmd_analyze, "thresholds, window selection, report"),
         ("run", cmd_run, "targets + ingest + extract + analyze"),
+        ("intensity", cmd_intensity, "intensity extraction of all files below the data folder"),
     ):
         s = sub.add_parser(name, help=hlp)
         s.add_argument("-c", "--config", required=True)
         s.set_defaults(fn=fn)
         if name == "convert":
             s.add_argument("--dry-run", action="store_true", help="print commands only")
+        if name == "intensity":
+            s.add_argument("--jobs", type=int, default=None, help="parallel processes")
         if name == "targets":
             s.add_argument("--force", action="store_true", help="overwrite targets.csv")
     u = sub.add_parser("ui", help="graphical interface in the browser (needs streamlit)")

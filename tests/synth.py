@@ -23,7 +23,8 @@ def profile(t, drift=0.0):
 
 
 def write_file(path: Path, seed: int, drift: float = 0.0, interference: bool = False,
-               ions=IONS, n_scans: int = 90, duration: float = 30.0):
+               ions=IONS, n_scans: int = 90, duration: float = 30.0, mz_offset_ppm: float = 0.0,
+               interference_intensity: float = 3e5):
     rng = np.random.default_rng(seed)
     times = np.linspace(0.2, duration - 0.2, n_scans)
     with MzMLWriter(open(path, "wb"), close=True) as out:
@@ -48,11 +49,11 @@ def write_file(path: Path, seed: int, drift: float = 0.0, interference: bool = F
                             if lv < 2e3:  # noise threshold: peak not reported
                                 continue
                             rsd = np.sqrt(2e3 / lv + 0.02**2)
-                            mz.append(mm * (1 + rng.normal(0, 1e-6)))
+                            mz.append(mm * (1 + mz_offset_ppm * 1e-6 + rng.normal(0, 1e-6)))
                             inten.append(max(lv * (1 + rng.normal(0, rsd)), 1.0))
                     if interference:  # isobaric peak 7 ppm above caffeine [M+H]+
-                        mz.append(195.087652 * (1 + 7e-6))
-                        inten.append(3e5 * (1 + rng.normal(0, 0.05)))
+                        mz.append(195.087652 * (1 + 7e-6 + rng.normal(0, 3e-7)))
+                        inten.append(interference_intensity * (1 + rng.normal(0, 0.05)))
                     for _ in range(30):  # background
                         mz.append(rng.uniform(60, 740))
                         inten.append(rng.uniform(2e3, 6e3))

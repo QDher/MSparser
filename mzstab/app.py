@@ -98,6 +98,111 @@ if not (root / "config.yaml").exists():
 cfg = user_cfg(root)
 paths = resolved(root)["paths"]
 work, rep = Path(paths["work_dir"]), Path(paths["report_dir"])
+MODES = {"stability": "Stability analysis", "intensity": "Intensity extraction"}
+mode = st.sidebar.radio("Mode", list(MODES), index=list(MODES).index(cfg.get("mode", "stability")),
+                        format_func=MODES.get,
+                        help="Stability analysis: find the time window in which the signal is stable. "
+                             "Intensity extraction: report the intensity of every possible ion in every file.")
+if mode != cfg.get("mode", "stability"):
+    cfg["mode"] = mode
+    save_cfg(root, cfg)
+    st.rerun()
+
+
+# --------------------------------------------------------------- components
+def components_editor(targets_tab: str = "tab 4"):
+    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), tick the "
+               "charge states that are possible, and choose what the component is:")
+    st.markdown(
+        f"- **{MODE_LABELS['proton']}**: a neutral molecule that is protonated or deprotonated in the source, "
+        "e.g. [M+H]⁺, [M−H]⁻.\n"
+        f"- **{MODE_LABELS['intrinsic']}**: a species that is an ion by itself (Na, K, NH4, Cl, a quaternary "
+        "ammonium…). No H⁺ is added or removed. **Choose this for an ion to obtain its adducts with the "
+        "molecules**: sodium with +1 gives [M+Na]⁺; chloride with −1 gives [M+Cl]⁻.\n"
+        "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
+        "([M1+M2+H]⁺), or a cation with an anion.")
+    cp = Path(paths["components"])
+    rows = []
+    if cp.exists():
+        for d in (yaml.safe_load(cp.read_text()) or {}).get("components", []):
+            rows.append({"name": d["name"], "formula": d["formula"],
+                         **{k: v in d.get("charges", []) for k, v in CHARGE_COLS.items()},
+                         "mode": MODE_LABELS[normalize_mode(d.get("mode", "proton"))]})
+    comp_df = pd.DataFrame(rows, columns=["name", "formula", *CHARGE_COLS, "mode"])
+    for k in CHARGE_COLS:
+        comp_df[k] = comp_df[k].astype(bool)
+    edited = st.data_editor(
+        comp_df, num_rows="dynamic", width="stretch", key="components_editor",
+        column_config={
+            "name": st.column_config.TextColumn("Name", required=True),
+            "formula": st.column_config.TextColumn("Neutral formula", required=True),
+            **{k: st.column_config.CheckboxColumn(k, default=False) for k in CHARGE_COLS},
+            "mode": st.column_config.SelectboxColumn("The component is a…", options=list(MODE_VALUES),
+                                                     default=MODE_LABELS["proton"], required=True, width="medium"),
+        })
+    if st.button("Save components", type="primary"):
+        try:
+            out, comps = [], []
+            for r in edited.dropna(subset=["name", "formula"]).to_dict("records"):
+                charges = [v for k, v in CHARGE_COLS.items() if r.get(k) is True]
+                name, mode = str(r["name"]).strip(), MODE_VALUES.get(r.get("mode"), "proton")
+                if not charges:
+                    raise ValueError(f"{name}: tick at least one charge state")
+                c = Component(name, str(r["formula"]).strip(), tuple(charges), mode)
+                c.composition()  # validates the formula
+                comps.append(c)
+                out.append({"name": name, "formula": c.formula, "charges": charges, "mode": mode})
+            if len({c.name for c in comps}) != len(comps):
+                raise ValueError("component names must be unique")
+            generate_targets(comps, cfg["targets"]["pairs"])
+            cp.write_text(yaml.safe_dump({"components": out}, sort_keys=False))
+            st.success(f"{len(out)} components saved. Regenerate the targets in {targets_tab}.")
+        except Exception as e:
+            st.error(f"Not saved: {e}")
+
+
+# ------------------------------------------------------------------ targets
+def targets_editor(components_tab: str = "tab 2"):
+    st.caption("Ions proposed from the components. Untick 'use' for ions that should not be followed.")
+    tp = work / "targets.csv"
+    if st.button("Generate targets from components" if not tp.exists()
+                 else "Regenerate targets (discards the current selection)"):
+        run_steps(root, [("Targets", cli.cmd_targets, argparse.Namespace(force=True))])
+    if tp.exists():
+        t = pd.read_csv(tp)
+        t["use"] = t["use"].astype(bool)
+        if "type" in t:
+            n = t["type"].value_counts()
+            st.caption(f"{len(t)} ions: {n.get('ion', 0)} of single components, {n.get('adduct', 0)} adducts of a "
+                       f"molecule with an entered ion, {n.get('pair', 0)} made of two components. Positive ions "
+                       "are followed in positive-mode acquisitions, negative ions in negative-mode ones.")
+            cps = (yaml.safe_load(Path(paths["components"]).read_text()) or {}).get("components", []) \
+                if Path(paths["components"]).exists() else []
+            if cps and not any(normalize_mode(c.get("mode", "proton")) == "intrinsic" for c in cps):
+                st.warning(f"No component is set as '{MODE_LABELS['intrinsic']}', so no adduct with an entered ion "
+                           "(such as [M+Na]⁺) is proposed. If a component is an ion (Na, K, Cl…), set its "
+                           "type to this in the Components tab and regenerate the targets.")
+        t_edit = st.data_editor(
+            t, width="stretch", hide_index=True, key="targets_editor",
+            disabled=[c for c in t.columns if c != "use"],
+            column_order=["use", "type", "component", "ion", "charge", "mz", "iso_mz", "iso_ratio", "requires"],
+            column_config={"mz": st.column_config.NumberColumn("m/z", format="%.5f"),
+                           "iso_mz": st.column_config.NumberColumn("isotope m/z", format="%.5f"),
+                           "iso_ratio": st.column_config.NumberColumn("isotope ratio", format="%.4f"),
+                           "requires": "requires components"})
+        if st.button("Save target selection", type="primary"):
+            t_edit.assign(use=t_edit["use"].astype(int)).to_csv(tp, index=False)
+            st.success(f"{int(t_edit['use'].sum())} of {len(t_edit)} targets selected.")
+
+
+if mode == "intensity":
+    from mzstab import app_intensity
+
+    app_intensity.render(dict(
+        root=root, cfg=cfg, paths=paths, work=work, rep=rep, save_cfg=save_cfg, resolved=resolved,
+        parse_numbers=parse_numbers, components_editor=components_editor, targets_editor=targets_editor))
+    st.stop()
+
 status = {
     "Components": Path(paths["components"]).exists(),
     "Samples": Path(paths["samples"]).exists(),
@@ -214,54 +319,7 @@ with tabs[0]:
 
 # --------------------------------------------------------------- components
 with tabs[1]:
-    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), tick the "
-               "charge states that are possible, and choose what the component is:")
-    st.markdown(
-        f"- **{MODE_LABELS['proton']}**: a neutral molecule that is protonated or deprotonated in the source, "
-        "e.g. [M+H]⁺, [M−H]⁻.\n"
-        f"- **{MODE_LABELS['intrinsic']}**: a species that is an ion by itself (Na, K, NH4, Cl, a quaternary "
-        "ammonium…). No H⁺ is added or removed. **Choose this for an ion to obtain its adducts with the "
-        "molecules**: sodium with +1 gives [M+Na]⁺; chloride with −1 gives [M+Cl]⁻.\n"
-        "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
-        "([M1+M2+H]⁺), or a cation with an anion.")
-    cp = Path(paths["components"])
-    rows = []
-    if cp.exists():
-        for d in (yaml.safe_load(cp.read_text()) or {}).get("components", []):
-            rows.append({"name": d["name"], "formula": d["formula"],
-                         **{k: v in d.get("charges", []) for k, v in CHARGE_COLS.items()},
-                         "mode": MODE_LABELS[normalize_mode(d.get("mode", "proton"))]})
-    comp_df = pd.DataFrame(rows, columns=["name", "formula", *CHARGE_COLS, "mode"])
-    for k in CHARGE_COLS:
-        comp_df[k] = comp_df[k].astype(bool)
-    edited = st.data_editor(
-        comp_df, num_rows="dynamic", width="stretch", key="components_editor",
-        column_config={
-            "name": st.column_config.TextColumn("Name", required=True),
-            "formula": st.column_config.TextColumn("Neutral formula", required=True),
-            **{k: st.column_config.CheckboxColumn(k, default=False) for k in CHARGE_COLS},
-            "mode": st.column_config.SelectboxColumn("The component is a…", options=list(MODE_VALUES),
-                                                     default=MODE_LABELS["proton"], required=True, width="medium"),
-        })
-    if st.button("Save components", type="primary"):
-        try:
-            out, comps = [], []
-            for r in edited.dropna(subset=["name", "formula"]).to_dict("records"):
-                charges = [v for k, v in CHARGE_COLS.items() if r.get(k) is True]
-                name, mode = str(r["name"]).strip(), MODE_VALUES.get(r.get("mode"), "proton")
-                if not charges:
-                    raise ValueError(f"{name}: tick at least one charge state")
-                c = Component(name, str(r["formula"]).strip(), tuple(charges), mode)
-                c.composition()  # validates the formula
-                comps.append(c)
-                out.append({"name": name, "formula": c.formula, "charges": charges, "mode": mode})
-            if len({c.name for c in comps}) != len(comps):
-                raise ValueError("component names must be unique")
-            generate_targets(comps, cfg["targets"]["pairs"])
-            cp.write_text(yaml.safe_dump({"components": out}, sort_keys=False))
-            st.success(f"{len(out)} components saved. Regenerate the targets in tab 4.")
-        except Exception as e:
-            st.error(f"Not saved: {e}")
+    components_editor()
 
 # ------------------------------------------------------------------ samples
 with tabs[2]:
@@ -325,36 +383,7 @@ with tabs[2]:
 
 # ------------------------------------------------------------------ targets
 with tabs[3]:
-    st.caption("Ions proposed from the components. Untick 'use' for ions that should not be followed.")
-    tp = work / "targets.csv"
-    if st.button("Generate targets from components" if not tp.exists()
-                 else "Regenerate targets (discards the current selection)"):
-        run_steps(root, [("Targets", cli.cmd_targets, argparse.Namespace(force=True))])
-    if tp.exists():
-        t = pd.read_csv(tp)
-        t["use"] = t["use"].astype(bool)
-        if "type" in t:
-            n = t["type"].value_counts()
-            st.caption(f"{len(t)} ions: {n.get('ion', 0)} of single components, {n.get('adduct', 0)} adducts of a "
-                       f"molecule with an entered ion, {n.get('pair', 0)} made of two components. Positive ions "
-                       "are followed in positive-mode acquisitions, negative ions in negative-mode ones.")
-            cps = (yaml.safe_load(Path(paths["components"]).read_text()) or {}).get("components", []) \
-                if Path(paths["components"]).exists() else []
-            if cps and not any(normalize_mode(c.get("mode", "proton")) == "intrinsic" for c in cps):
-                st.warning(f"No component is set as '{MODE_LABELS['intrinsic']}', so no adduct with an entered ion "
-                           "(such as [M+Na]⁺) is proposed. If a component is an ion (Na, K, Cl…), set its "
-                           "type to this in tab 2 and regenerate the targets.")
-        t_edit = st.data_editor(
-            t, width="stretch", hide_index=True, key="targets_editor",
-            disabled=[c for c in t.columns if c != "use"],
-            column_order=["use", "type", "component", "ion", "charge", "mz", "iso_mz", "iso_ratio", "requires"],
-            column_config={"mz": st.column_config.NumberColumn("m/z", format="%.5f"),
-                           "iso_mz": st.column_config.NumberColumn("isotope m/z", format="%.5f"),
-                           "iso_ratio": st.column_config.NumberColumn("isotope ratio", format="%.4f"),
-                           "requires": "requires components"})
-        if st.button("Save target selection", type="primary"):
-            t_edit.assign(use=t_edit["use"].astype(int)).to_csv(tp, index=False)
-            st.success(f"{int(t_edit['use'].sum())} of {len(t_edit)} targets selected.")
+    targets_editor()
 
 # ---------------------------------------------------------------------- run
 with tabs[4]:

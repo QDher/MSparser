@@ -58,19 +58,34 @@ def _program(spec: str, key: str = "thermo_parser") -> list[str]:
     return [x.strip('"') for x in parts] or [spec]
 
 
-def find_raw(raw_dir: Path) -> list[Path]:
-    """Raw acquisitions in a folder (.raw in any letter case; Waters: folders)."""
+def find_raw(raw_dir: Path, recursive: bool = False) -> list[Path]:
+    """Raw acquisitions in a folder (.raw in any letter case; Waters: folders).
+    With `recursive`, subfolders are searched too."""
     if not raw_dir.exists():
         raise FileNotFoundError(f"raw folder not found: {raw_dir}")
-    return sorted(p for p in raw_dir.iterdir() if p.suffix.lower() == ".raw")
+    if not recursive:
+        return sorted(p for p in raw_dir.iterdir() if p.suffix.lower() == ".raw")
+    found = []
+
+    def walk(folder: Path):
+        for p in sorted(folder.iterdir()):
+            if p.suffix.lower() == ".raw":
+                found.append(p)          # a Waters .raw folder is one acquisition: do not enter it
+            elif p.is_dir():
+                walk(p)
+
+    walk(raw_dir)
+    return found
 
 
-def convert_all(cfg: dict, dry_run: bool = False) -> list[list[str]]:
+def convert_all(cfg: dict, dry_run: bool = False, recursive: bool = False) -> list[list[str]]:
     """Convert every raw acquisition without an mzML. Prints one line per file
-    and raises if nothing can be converted or a conversion gives no mzML."""
+    and raises if nothing can be converted or a conversion gives no mzML.
+    With `recursive`, subfolders are converted too and the folder tree is
+    reproduced in the output folder."""
     raw_dir = Path(cfg["paths"]["raw_dir"])
     out_dir = Path(cfg["paths"]["mzml_dir"])
-    raws = find_raw(raw_dir)
+    raws = find_raw(raw_dir, recursive)
     if not raws:
         raise FileNotFoundError(
             f"no .raw file in {raw_dir}. Copy the raw files there, or set the raw folder in the settings."
@@ -79,19 +94,23 @@ def convert_all(cfg: dict, dry_run: bool = False) -> list[list[str]]:
         out_dir.mkdir(parents=True, exist_ok=True)
     cmds, done, skipped = [], 0, 0
     for raw in raws:
-        target = out_dir / f"{raw.stem}.mzML"
+        sub = raw.parent.relative_to(raw_dir)
+        dest = out_dir / sub
+        target = dest / f"{raw.stem}.mzML"
+        shown = (sub / raw.name).as_posix()
         if target.exists():
             skipped += 1
-            print(f"{raw.name}: already converted")
+            print(f"{shown}: already converted")
             continue
         # Waters raw data are folders, Thermo raw data are files
         vendor = cfg["vendor"] if cfg["vendor"] != "auto" else ("waters" if raw.is_dir() else "thermo")
-        cmd = (thermo_command if vendor == "thermo" else waters_command)(cfg, raw, out_dir)
+        cmd = (thermo_command if vendor == "thermo" else waters_command)(cfg, raw, dest)
         key = "thermo_parser" if vendor == "thermo" else "msconvert"
         cmd = _program(cfg["convert"][key], key) + cmd[1:]
         cmds.append(cmd)
         if dry_run:
             continue
+        dest.mkdir(parents=True, exist_ok=True)
         if not (Path(cmd[0]).exists() or shutil.which(cmd[0])):
             name = "ThermoRawFileParser" if vendor == "thermo" else "msconvert (ProteoWizard)"
             raise FileNotFoundError(
@@ -110,11 +129,11 @@ def convert_all(cfg: dict, dry_run: bool = False) -> list[list[str]]:
         if r.returncode != 0 or not target.exists():
             tail = "\n".join((r.stdout + "\n" + r.stderr).strip().splitlines()[-15:])
             raise RuntimeError(
-                f"{raw.name}: the converter did not produce {target.name} "
+                f"{shown}: the converter did not produce {target.name} "
                 f"(exit code {r.returncode}).\nCommand: {' '.join(cmd)}\nConverter output:\n{tail}"
             )
         done += 1
-        print(f"{raw.name} -> {target.name}")
+        print(f"{shown} -> {target.name}")
     if not dry_run:
         print(f"{done} file(s) converted, {skipped} already converted, in {out_dir}")
     return cmds
