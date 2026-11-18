@@ -54,9 +54,9 @@ def render(ctx: dict):
 
     # ------------------------------------------------------------------ files
     with tabs[1]:
-        st.caption("All files below these folders are used, including those in subfolders, so the data can be "
-                   "organised in any folder tree. The same components apply to every file; each file only "
-                   "reports the ions matching its own polarity.")
+        st.caption("The data can be organised in any folder tree. Give the main folders below, then tick the "
+                   "folders to use. The same components apply to every file; each file only reports the ions "
+                   "matching its own polarity.")
         st.markdown(f"Give a subfolder of the project folder `{root}`, or a full path.")
         f1, f2 = st.columns(2)
         in_raw = f1.text_input("Folder containing the raw files (with subfolders)", cfg["paths"]["raw_dir"],
@@ -70,31 +70,69 @@ def render(ctx: dict):
             save_cfg(root, cfg)
             st.rerun()
         raw_p, mzml_p = Path(paths["raw_dir"]), Path(paths["mzml_dir"])
-        n_raw = len(find_raw(raw_p, recursive=True)) if raw_p.is_dir() else 0
+        raws = find_raw(raw_p, recursive=True) if raw_p.is_dir() else []
         (f1.caption if raw_p.is_dir() else f1.warning)(
-            f"{raw_p} — {n_raw} raw file(s) found" if raw_p.is_dir() else f"{raw_p} — folder not found")
-        found = discover_files(mzml_p)
-        f2.caption(f"{mzml_p} — {len(found)} mzML/CSV file(s) found")
-        if st.button("Convert raw files", disabled=n_raw == 0,
-                     help="Needs ThermoRawFileParser or msconvert (program path under Stability analysis > "
-                          "Settings > Advanced settings > Converters). Already converted files are skipped."):
-            buf = io.StringIO()
-            try:
-                with st.spinner("Converting..."), contextlib.redirect_stdout(buf):
-                    cli.cmd_convert(resolved(root), None)
-                st.success("Conversion done.")
-            except (Exception, SystemExit) as e:
-                st.error(f"Conversion failed: {e}")
-            st.session_state["int_log"] = buf.getvalue()
-            found = discover_files(mzml_p)
-        if st.session_state.get("int_log"):
-            st.code(st.session_state["int_log"])
-        if len(found):
-            per_folder = found.groupby("folder").size().rename("files").reset_index()
-            per_folder["folder"] = per_folder["folder"].replace("", "(top folder)")
-            c1, c2 = st.columns([1, 2])
-            c1.dataframe(per_folder, hide_index=True, width="stretch")
-            c2.dataframe(found[["folder", "name"]], hide_index=True, width="stretch", height=300)
+            f"{raw_p} — {len(raws)} raw file(s) in all folders" if raw_p.is_dir() else f"{raw_p} — folder not found")
+        all_data = discover_files(mzml_p)
+        f2.caption(f"{mzml_p} — {len(all_data)} mzML/CSV file(s) in all folders")
+
+        # folders found on either side, with the user's choice
+        raw_folders = pd.Series(["" if r.parent == raw_p else r.parent.relative_to(raw_p).as_posix() for r in raws],
+                                dtype=str).value_counts()
+        data_folders = all_data["folder"].value_counts()
+        names = sorted(set(raw_folders.index) | set(data_folders.index))
+        saved = ic.get("folders")
+        saved = [] if saved is None else list(saved)
+        st.markdown("**Folders to use**")
+        if not names:
+            st.info("No raw, mzML or CSV file found in these folders.")
+        else:
+            table = pd.DataFrame({
+                "use": [n in saved for n in names],
+                "folder": [n or "(top folder)" for n in names],
+                "raw files": [int(raw_folders.get(n, 0)) for n in names],
+                "converted files": [int(data_folders.get(n, 0)) for n in names],
+            })
+            b1, b2, _ = st.columns([1, 1, 4])
+            if b1.button("Tick all"):
+                ic["folders"] = names
+                save_cfg(root, cfg)
+                st.session_state.pop("folder_editor", None)
+                st.rerun()
+            if b2.button("Untick all"):
+                ic["folders"] = []
+                save_cfg(root, cfg)
+                st.session_state.pop("folder_editor", None)
+                st.rerun()
+            edited = st.data_editor(table, hide_index=True, width="stretch", key="folder_editor",
+                                    disabled=["folder", "raw files", "converted files"])
+            picked = [n for n, u in zip(names, edited["use"]) if bool(u)]
+            if picked != [n for n in names if n in saved] or ic.get("folders") is None:
+                ic["folders"] = picked
+                save_cfg(root, cfg)
+                st.rerun()
+            n_sel_raw = int(sum(raw_folders.get(n, 0) for n in picked))
+            n_sel_data = int(sum(data_folders.get(n, 0) for n in picked))
+            st.caption(f"{len(picked)} folder(s) ticked: {n_sel_raw} raw file(s), {n_sel_data} converted file(s). "
+                       "Only ticked folders are converted and extracted. A folder does not include its subfolders: "
+                       "tick each one wanted.")
+            if st.button("Convert the raw files of the ticked folders", disabled=n_sel_raw == 0,
+                         help="Needs ThermoRawFileParser or msconvert (program path under Stability analysis > "
+                              "Settings > Advanced settings > Converters). Already converted files are skipped."):
+                buf = io.StringIO()
+                try:
+                    with st.spinner("Converting..."), contextlib.redirect_stdout(buf):
+                        cli.cmd_convert(resolved(root), None)
+                    st.success("Conversion done.")
+                except (Exception, SystemExit) as e:
+                    st.error(f"Conversion failed: {e}")
+                st.session_state["int_log"] = buf.getvalue()
+            if st.session_state.get("int_log"):
+                st.code(st.session_state["int_log"])
+            found = discover_files(mzml_p, picked)
+            if len(found):
+                with st.expander(f"{len(found)} converted file(s) in the ticked folders"):
+                    st.dataframe(found[["folder", "name"]], hide_index=True, width="stretch", height=300)
 
     with tabs[2]:
         ctx["targets_editor"]()
@@ -111,6 +149,10 @@ def render(ctx: dict):
             min_scans = c1.selectbox("Consecutive scans needed to report a signal", options,
                                      index=options.index(int(ic["min_scans"])))
             length = c2.number_input("Window length, s", value=float(ic["window_length_s"]), min_value=1.0, step=1.0)
+            step = c2.number_input("Shift between successive windows, s", value=float(ic["window_step_s"]),
+                                   min_value=0.1, step=0.5,
+                                   help="Windows of the given length are placed every this many seconds. With "
+                                        "10 s windows and a 1 s shift, a 30 s acquisition has 21 windows.")
             variation = c2.number_input("Flag when windows differ by more than, %",
                                         value=float(ic["variation_flag_pct"]), min_value=1.0, step=5.0,
                                         help="Difference between the highest and lowest window mean of the "
@@ -122,15 +164,19 @@ def render(ctx: dict):
             if st.form_submit_button("Save settings"):
                 try:
                     ic.update(ppm_steps=sorted(parse_numbers(ppm)), min_scans=int(min_scans),
-                              window_length_s=float(length), variation_flag_pct=float(variation),
+                              window_length_s=float(length), window_step_s=float(step),
+                              variation_flag_pct=float(variation),
                               rsd_flag_pct=float(rsd_flag), min_relative_intensity=float(rel) / 100)
                     save_cfg(root, cfg)
                     st.success("Settings saved.")
                 except ValueError as e:
                     st.error(f"Not saved: {e}")
-        ready = status["Components"] and len(discover_files(Path(paths["mzml_dir"]))) > 0
+        n_ready = len(discover_files(Path(paths["mzml_dir"]), ic.get("folders") or []))
+        ready = status["Components"] and n_ready > 0
         if not ready:
-            st.warning("Save the components (tab 1) and provide converted files (tab 2) first.")
+            st.warning("Save the components (tab 1), and tick folders containing converted files (tab 2) first.")
+        else:
+            st.caption(f"{n_ready} file(s) in {len(ic.get('folders') or [])} ticked folder(s) will be extracted.")
         if st.button("Extract intensities", type="primary", disabled=not ready,
                      help="Files already processed with the same settings and targets are reused."):
             bar = st.progress(0.0, text="Starting...")

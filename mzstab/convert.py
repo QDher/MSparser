@@ -78,7 +78,7 @@ def find_raw(raw_dir: Path, recursive: bool = False) -> list[Path]:
     return found
 
 
-def convert_all(cfg: dict, dry_run: bool = False, recursive: bool = False) -> list[list[str]]:
+def convert_all(cfg: dict, dry_run: bool = False, recursive: bool = False, folders=None) -> list[list[str]]:
     """Convert every raw acquisition without an mzML. Prints one line per file
     and raises if nothing can be converted or a conversion gives no mzML.
     With `recursive`, subfolders are converted too and the folder tree is
@@ -86,6 +86,9 @@ def convert_all(cfg: dict, dry_run: bool = False, recursive: bool = False) -> li
     raw_dir = Path(cfg["paths"]["raw_dir"])
     out_dir = Path(cfg["paths"]["mzml_dir"])
     raws = find_raw(raw_dir, recursive)
+    if folders is not None:  # only the chosen folders (relative to the raw folder)
+        keep = set(folders)
+        raws = [r for r in raws if ("" if r.parent == raw_dir else r.parent.relative_to(raw_dir).as_posix()) in keep]
     if not raws:
         raise FileNotFoundError(
             f"no .raw file in {raw_dir}. Copy the raw files there, or set the raw folder in the settings."

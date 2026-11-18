@@ -37,9 +37,11 @@ FLAGS = ["low_stability", "window_variation", "gaps", "multiple_peaks", "wide_mz
 
 
 # ------------------------------------------------------------------- files
-def discover_files(data_dir: str | Path) -> pd.DataFrame:
+def discover_files(data_dir: str | Path, folders=None) -> pd.DataFrame:
     """mzML and CSV files below a folder, at any depth. `file` is the path
-    relative to the folder without extension, so that names stay unique."""
+    relative to the folder without extension, so that names stay unique.
+    `folders`: relative folders to keep (None = all); a folder does not
+    include its subfolders."""
     data_dir = Path(data_dir)
     rows = []
     if data_dir.is_dir():
@@ -48,7 +50,10 @@ def discover_files(data_dir: str | Path) -> pd.DataFrame:
                 rel = p.relative_to(data_dir).with_suffix("")
                 rows.append(dict(file=rel.as_posix(), folder=rel.parent.as_posix() if str(rel.parent) != "." else "",
                                  name=rel.name, path=str(p)))
-    return pd.DataFrame(rows, columns=["file", "folder", "name", "path"])
+    df = pd.DataFrame(rows, columns=["file", "folder", "name", "path"])
+    if folders is not None:
+        df = df[df["folder"].isin(set(folders))].reset_index(drop=True)
+    return df
 
 
 # ------------------------------------------------------------------- peaks
@@ -228,7 +233,7 @@ def _cache_key(path: Path, targets: pd.DataFrame, cfg: dict) -> str:
     st = path.stat()
     t = targets[targets["use"] == 1][["target_id", "mz", "iso_mz", "iso_ratio"]].round(6).to_json()
     # settings that do not change what is measured in a file are left out of the key
-    ic = {k: v for k, v in cfg["intensity"].items() if k not in ("default_peak", "jobs")}
+    ic = {k: v for k, v in cfg["intensity"].items() if k not in ("default_peak", "jobs", "folders")}
     params = json.dumps([ic, cfg["extraction"], cfg["scan_filter"], cfg["csv"], cfg["vendor"]],
                         sort_keys=True, default=str)
     return hashlib.sha1(f"{path}|{st.st_size}|{st.st_mtime_ns}|{t}|{params}".encode()).hexdigest()[:20]
@@ -257,9 +262,10 @@ def run_batch(cfg: dict, targets: pd.DataFrame, progress=None) -> dict:
     work = Path(cfg["paths"]["work_dir"])
     cache = work / "intensity_cache"
     cache.mkdir(parents=True, exist_ok=True)
-    files = discover_files(cfg["paths"]["mzml_dir"])
+    files = discover_files(cfg["paths"]["mzml_dir"], cfg["intensity"].get("folders"))
     if files.empty:
-        raise FileNotFoundError(f"no mzML or CSV file found in {cfg['paths']['mzml_dir']} or its subfolders")
+        raise FileNotFoundError(
+            f"no mzML or CSV file found in the selected folders of {cfg['paths']['mzml_dir']}")
     jobs = [(r.path, r.file, targets, cfg, str(cache)) for r in files.itertuples(index=False)]
     n_jobs = max(1, int(cfg["intensity"].get("jobs") or 1))
     results = []

@@ -26,7 +26,9 @@ def _work(cfg) -> Path:
 
 
 def cmd_convert(cfg, args):
-    cmds = convert_all(cfg, dry_run=getattr(args, "dry_run", False), recursive=cfg["mode"] == "intensity")
+    recursive = cfg["mode"] == "intensity"
+    cmds = convert_all(cfg, dry_run=getattr(args, "dry_run", False), recursive=recursive,
+                       folders=cfg["intensity"].get("folders") if recursive else None)
     if args.dry_run:
         for c in cmds:
             print(" ".join(c))

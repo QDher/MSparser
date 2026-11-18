@@ -203,7 +203,7 @@ ion in every file, whatever its stability. It is meant for many files.
 | Tab | What to do |
 |---|---|
 | **1. Components** | Same as in the stability mode. |
-| **2. Files** | Give the folder of the raw files and the folder of the converted files. Subfolders are included, so the data can be organised in any folder tree; the tree is reproduced at conversion. |
+| **2. Files** | Give the main folder of the raw files and the folder of the converted files. All their subfolders are listed; tick the folders to convert and extract. A folder does not include its subfolders. The folder tree is reproduced at conversion. |
 | **3. Targets** | Same as in the stability mode. |
 | **4. Extract** | Adjust the settings if needed and click *Extract intensities*. Files already processed with the same settings are reused. |
 | **5. Results** | Intensity table, choice of the peak, detail of one ion in one file, downloads. |
@@ -220,7 +220,8 @@ How a value is obtained, for each ion in each file:
    exported; the rule can be changed to the most intense, and the peak can be
    chosen by hand for single ions and files.
 3. **Intensity.** The mean over the most stable 10 s window of the
-   acquisition (the one with the lowest RSD).
+   acquisition (the one with the lowest RSD). Windows are placed every
+   second (configurable), so a 30 s acquisition has 21 overlapping windows.
 4. **Flags.** Nothing is excluded. Each value carries its RSD, the spread
    between the 10 s windows of the acquisition, the m/z window used and the
    mass error, with these flags: `low_stability` (RSD above 30 %),

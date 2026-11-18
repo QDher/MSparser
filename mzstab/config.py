@@ -77,6 +77,9 @@ DEFAULTS = {
         "min_relative_intensity": 0.10, # other peaks reported if >= this x the most intense
         "default_peak": "closest",      # closest | most_intense
         "jobs": 1,                      # parallel processes (command line only)
+        # Folders to use, relative to the raw / data folder ("" = the folder
+        # itself). None = every folder; the interface always stores a list.
+        "folders": None,
     },
     "validation": {"test_fraction": 0.5, "seed": 0, "min_files": 4},
 }

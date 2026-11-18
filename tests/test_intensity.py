@@ -135,6 +135,10 @@ def test_interface_of_intensity_mode(batch):
         at = AppTest.from_file(str(app), default_timeout=180).run()
         assert not at.exception, [e.value for e in at.exception]
         assert [t.label for t in at.tabs] == ["1. Components", "2. Files", "3. Targets", "4. Extract", "5. Results"]
+        # no folder is used until the user ticks it
+        assert [b for b in at.button if b.label == "Extract intensities"][0].disabled
+        at = [b for b in at.button if b.label == "Tick all"][0].click().run()
+        assert not at.exception, [e.value for e in at.exception]
         at = [b for b in at.button if b.label == "Extract intensities"][0].click().run()
         assert not at.exception and not at.error, [e.value for e in at.error]
         assert {m.label: m.value for m in at.metric}["Files"] == "6"
@@ -161,6 +165,30 @@ def test_recursive_conversion(tmp_path):
     (tmp_path / "config.yaml").write_text("vendor: thermo\nmode: intensity\n")
     cfg = load_config(tmp_path / "config.yaml")
     cfg["convert"]["thermo_parser"] = f'"{sys.executable}" "{conv}"'
+    convert_all(cfg, recursive=True, folders=["day1/set_a"])            # only the chosen folder
+    assert (tmp_path / "mzml" / "day1" / "set_a" / "deep.mzML").exists()
+    assert not (tmp_path / "mzml" / "top.mzML").exists()
     convert_all(cfg, recursive=True)
     assert (tmp_path / "mzml" / "top.mzML").exists()
-    assert (tmp_path / "mzml" / "day1" / "set_a" / "deep.mzML").exists()
+
+
+def test_only_chosen_folders_are_used(batch, capsys):
+    import yaml
+
+    from mzstab.intensity import discover_files
+
+    assert len(discover_files(batch / "mzml")) == 6
+    assert list(discover_files(batch / "mzml", ["day1"])["name"]) == ["a_plain", "b_offset8ppm"]
+    assert len(discover_files(batch / "mzml", ["day2"])) == 2          # subfolders are not included
+    cfg = yaml.safe_load((batch / "config.yaml").read_text())
+    cfg["intensity"]["folders"] = ["day1", "day2/series_b"]
+    (batch / "only.yaml").write_text(yaml.safe_dump(cfg))
+    main(["intensity", "-c", str(batch / "only.yaml")])
+    files = pd.read_csv(batch / "report" / "intensity_files.csv")
+    assert sorted(files["folder"].unique()) == ["day1", "day2/series_b"] and len(files) == 4
+    m = pd.read_csv(batch / "report" / "intensity_matrix.csv")
+    assert len(m) == 4
+    cfg["intensity"]["folders"] = []
+    (batch / "only.yaml").write_text(yaml.safe_dump(cfg))
+    with pytest.raises(FileNotFoundError, match="selected folders"):
+        main(["intensity", "-c", str(batch / "only.yaml")])
