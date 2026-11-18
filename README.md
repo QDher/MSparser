@@ -219,11 +219,13 @@ How a value is obtained, for each ion in each file:
    least 10 % of the most intense are listed. By default the closest is
    exported; the rule can be changed to the most intense, and the peak can be
    chosen by hand for single ions and files.
-3. **Intensity.** The mean over the most stable 10 s window of the
-   acquisition (the one with the lowest RSD). Windows are placed every
-   second (configurable), so a 30 s acquisition has 21 overlapping windows.
+3. **Intensity.** Each acquisition is covered by six time windows, each
+   lasting one third of the acquisition and spread evenly from the first to
+   the last scan (for 30 s: six 10 s windows starting every 4 s). The
+   intensity is the mean over the window with the lowest RSD. Window length
+   and number depend on the acquisition time only.
 4. **Flags.** Nothing is excluded. Each value carries its RSD, the spread
-   between the 10 s windows of the acquisition, the m/z window used and the
+   between the six windows of the acquisition, the m/z window used and the
    mass error, with these flags: `low_stability` (RSD above 30 %),
    `window_variation` (windows differing by 25 % or more), `gaps`,
    `multiple_peaks`, `wide_mz_window`, `isotope_mismatch`, `saturated`,
@@ -236,7 +238,7 @@ Output files in the `report` folder:
 | `intensity_matrix.csv` | Files as rows, ions as columns, intensities as values |
 | `intensity_values.csv` | One row per file and ion: intensity, flags, RSD, variation, m/z window, mass error, window used; undetected ions are listed with their status |
 | `intensity_peaks.csv` | All candidate peaks, with the one selected |
-| `intensity_window_means.csv` | Mean, RSD and slope of every 10 s window of every reported peak |
+| `intensity_window_means.csv` | Mean, RSD and slope of each of the six windows of every reported peak |
 | `intensity_files.csv` | Per file: folder, processing status or error, polarity, scan range, scan rate |
 
 Command line: `mzstab intensity -c config.yaml` (with `mode: intensity` in the

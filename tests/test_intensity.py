@@ -55,11 +55,18 @@ def test_batch_outputs(batch, capsys):
     a = v.loc[("day1/a_plain", CAF)]
     assert a["status"] == "detected" and a["mz_window_ppm"] == 5
     assert a["intensity"] == pytest.approx(1e7, rel=0.03)            # plateau value, not the rise or decay
+    # six windows of one third of the acquisition (29.6 s), spread evenly; the most stable is on the plateau
+    assert a["n_windows"] == 6
+    assert a["window_end_s"] - a["window_start_s"] == pytest.approx(29.6 / 3, abs=0.01)
     assert 5 <= a["window_start_s"] and a["window_end_s"] <= 25.5
-    assert a["window_end_s"] - a["window_start_s"] == pytest.approx(10)
-    assert a["rsd_pct"] < 4 and pd.isna(a["flags"])
-    # rise and decay are inside the acquisition: the 10 s windows differ, which is reported
-    assert v.loc[("day1/a_plain", CAF), "n_windows"] > 10
+    assert a["rsd_pct"] < 4 and "low_stability" not in str(a["flags"])
+    wm = pd.read_csv(rep / "intensity_window_means.csv")
+    w = wm[(wm["file"] == "day1/a_plain") & (wm["target_id"] == CAF)].sort_values("start")
+    assert list(w["window"]) == [1, 2, 3, 4, 5, 6] and w["selected"].sum() == 1
+    assert w["start"].iloc[0] == pytest.approx(0.2, abs=0.01) and w["end"].iloc[-1] == pytest.approx(29.8, abs=0.01)
+    assert np.diff(w["start"]) == pytest.approx(2 * 29.6 / 15, abs=0.01)   # evenly spaced
+    # the first and last windows include the rise and the decay: lower mean, reported as variation
+    assert w["mean"].iloc[0] < 0.85 * a["intensity"] and a["window_variation_pct"] > 15
 
     # adaptive m/z window: 8 ppm off -> not found at 5 ppm, found at 10 ppm
     b = v.loc[("day1/b_offset8ppm", CAF)]

@@ -69,9 +69,11 @@ DEFAULTS = {
     "intensity": {
         "ppm_steps": [5, 10, 15, 20],   # tried in this order; the first with a signal is used
         "min_scans": 5,                 # consecutive scans required to report a peak
-        "window_length_s": 10.0,        # fixed window; the most stable one is used
-        "window_step_s": 1.0,
-        "variation_flag_pct": 25.0,     # flag when 10 s windows differ by this much
+        # Windows are set by the acquisition alone: each lasts this fraction of
+        # its duration, and this many are spread evenly from start to end.
+        "window_fraction": 1 / 3,
+        "n_windows": 6,
+        "variation_flag_pct": 25.0,     # flag when the windows differ by this much
         "rsd_flag_pct": 30.0,           # flag "low stability" above this RSD
         "peak_width_ppm": 1.0,          # m/z scatter of one peak between scans
         "min_relative_intensity": 0.10, # other peaks reported if >= this x the most intense

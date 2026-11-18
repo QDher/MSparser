@@ -8,8 +8,8 @@ whatever its stability:
 - inside that window the centroids are grouped into peaks; the peak closest to
   the theoretical m/z, the most intense one, and any peak of at least 10 % of
   the most intense are reported as candidates;
-- the intensity of a peak is its mean over the most stable window of fixed
-  length (lowest RSD among the sliding windows);
+- the intensity of a peak is its mean over the most stable of six windows,
+  each one third of the acquisition (lowest RSD);
 - low stability, variation between windows, etc. are flagged, never excluded.
 
 Files are found recursively, so they can be organised in any folder tree.
@@ -109,24 +109,33 @@ def _candidates(t, slices, p_mz, p_int, target_mz, tol, ic):
     return out
 
 
+def window_bounds(t: np.ndarray, ic: dict) -> list[tuple[float, float]]:
+    """The windows of one acquisition: each lasts `window_fraction` of its
+    duration (default one third) and `n_windows` (default 6) are spread evenly
+    from the first to the last scan. For 30 s: six 10 s windows starting every 4 s."""
+    t0, t1 = float(t[0]), float(t[-1])
+    n = max(1, int(ic["n_windows"]))
+    length = (t1 - t0) * float(ic["window_fraction"])
+    if length <= 0:
+        return []
+    step = (t1 - t0 - length) / (n - 1) if n > 1 else 0.0
+    return [(t0 + k * step, t0 + k * step + length) for k in range(n)]
+
+
 def _measure(t, y, ic) -> tuple[dict, pd.DataFrame]:
-    """Intensity of one peak: mean over the most stable window of fixed length.
+    """Intensity of one peak: mean over the most stable of the windows.
     Returns (values, table of all windows)."""
-    length, step = float(ic["window_length_s"]), float(ic["window_step_s"])
     w = {"min_scans": max(3, int(ic["min_scans"])), "min_detected_fraction": 0.0}
     rows = []
-    k = 0
-    while t[0] + k * step + length <= t[-1] + 1e-9:
-        s = t[0] + k * step
-        r = window_stats(t, y, s, s + length, w)
+    for k, (s, e) in enumerate(window_bounds(t, ic), 1):
+        r = window_stats(t, y, s, e + 1e-6, w)  # the last window includes the last scan
         if r["n"] >= w["min_scans"] and np.isfinite(r["rsd"]):
-            rows.append(dict(start=round(s, 3), end=round(s + length, 3), **r))
-        k += 1
+            rows.append(dict(window=k, start=round(s, 3), end=round(e, 3), **r))
     wins = pd.DataFrame(rows)
     short = wins.empty
-    if short:  # acquisition shorter than the window, or too few scans: use everything
+    if short:  # too few scans in every window: use all scans
         r = window_stats(t, y, t[0], t[-1] + 1e-6, w)
-        wins = pd.DataFrame([dict(start=round(float(t[0]), 3), end=round(float(t[-1]), 3), **r)])
+        wins = pd.DataFrame([dict(window=0, start=round(float(t[0]), 3), end=round(float(t[-1]), 3), **r)])
     best = wins.loc[wins["rsd"].idxmin()] if wins["rsd"].notna().any() else wins.iloc[0]
     means = wins["mean"].dropna()
     variation = float((means.max() - means.min()) / best["mean"] * 100) if len(means) > 1 and best["mean"] > 0 else 0.0
@@ -139,7 +148,8 @@ def _measure(t, y, ic) -> tuple[dict, pd.DataFrame]:
         window_max_intensity=float(means.max()) if len(means) else np.nan, n_windows=int(len(means)),
         scans_detected=int(det.sum()), mean_all_scans=float(np.nanmean(y)), short_acquisition=bool(short),
     )
-    wins = wins.assign(selected=wins.index == best.name)[["start", "end", "n", "mean", "rsd", "rel_slope", "selected"]]
+    wins = wins.assign(selected=wins.index == best.name)[
+        ["window", "start", "end", "n", "mean", "rsd", "rel_slope", "selected"]]
     return vals, wins
 
 

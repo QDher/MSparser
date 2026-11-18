@@ -19,13 +19,13 @@ GREY, BLUE, ORANGE = "#898781", "#2a78d6", "#eb6834"
 PEAK_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
 FLAG_HELP = {
     "low_stability": "RSD in the window above the limit",
-    "window_variation": "the 10 s windows of the acquisition differ by more than the limit",
+    "window_variation": "the time windows of the acquisition differ by more than the limit",
     "gaps": "signal missing in more than 10 % of the scans of the window",
     "multiple_peaks": "several peaks in the m/z window",
     "wide_mz_window": "found only with an m/z window wider than the first one",
     "isotope_mismatch": "isotope peak ratio differs from the theoretical one",
     "saturated": "intensity at the saturation level",
-    "short_acquisition": "acquisition shorter than the window; all scans used",
+    "short_acquisition": "too few scans per window; all scans of the acquisition used",
 }
 
 
@@ -140,19 +140,17 @@ def render(ctx: dict):
     # ---------------------------------------------------------------- extract
     with tabs[3]:
         st.caption("For each ion in each file: the m/z windows are tried in increasing order and the first one "
-                   "containing a signal is used. The intensity is the mean over the most stable window of the "
-                   "given length. Nothing is excluded for instability; such values are flagged.")
+                   "containing a signal is used. The acquisition is covered by "
+                   f"{int(ic['n_windows'])} time windows, each lasting {ic['window_fraction']:.0%} of the acquisition "
+                   "and spread evenly from start to end (for 30 s: six 10 s windows starting every 4 s). The "
+                   "intensity is the mean over the most stable of them. Nothing is excluded for instability; "
+                   "such values are flagged.")
         with st.form("int_settings"):
             c1, c2, c3 = st.columns(3)
             ppm = c1.text_input("m/z windows tried, ± ppm (in this order)", ", ".join(f"{p:g}" for p in ic["ppm_steps"]))
             options = sorted({1, 3, 5, int(ic["min_scans"])})
             min_scans = c1.selectbox("Consecutive scans needed to report a signal", options,
                                      index=options.index(int(ic["min_scans"])))
-            length = c2.number_input("Window length, s", value=float(ic["window_length_s"]), min_value=1.0, step=1.0)
-            step = c2.number_input("Shift between successive windows, s", value=float(ic["window_step_s"]),
-                                   min_value=0.1, step=0.5,
-                                   help="Windows of the given length are placed every this many seconds. With "
-                                        "10 s windows and a 1 s shift, a 30 s acquisition has 21 windows.")
             variation = c2.number_input("Flag when windows differ by more than, %",
                                         value=float(ic["variation_flag_pct"]), min_value=1.0, step=5.0,
                                         help="Difference between the highest and lowest window mean of the "
@@ -164,7 +162,6 @@ def render(ctx: dict):
             if st.form_submit_button("Save settings"):
                 try:
                     ic.update(ppm_steps=sorted(parse_numbers(ppm)), min_scans=int(min_scans),
-                              window_length_s=float(length), window_step_s=float(step),
                               variation_flag_pct=float(variation),
                               rsd_flag_pct=float(rsd_flag), min_relative_intensity=float(rel) / 100)
                     save_cfg(root, cfg)
@@ -347,7 +344,7 @@ def render(ctx: dict):
                     st.markdown("**Signal over the acquisition**")
                     st.altair_chart((band + line).properties(height=300), width="stretch")
                     st.caption(f"Shaded: the window used ({row['window_start_s']:g}–{row['window_end_s']:g} s), "
-                               f"the most stable of its length. Exported peak: m/z {row['mz_observed']:.5f}.")
+                               f"the most stable of the windows. Exported peak: m/z {row['mz_observed']:.5f}.")
         wm = _load(rep / "intensity_window_means.csv")
         if len(wm):
             w = wm[(wm["file"] == f_sel) & (wm["target_id"] == t_sel)
@@ -368,7 +365,8 @@ def render(ctx: dict):
                     st.markdown("**Variation between windows**")
                     st.altair_chart(pts.properties(height=300), width="stretch")
                     lo, hi = w["mean"].min(), w["mean"].max()
-                    st.caption(f"One dot per {ic['window_length_s']:g} s window. Lowest window mean {lo:.3e}, "
+                    st.caption(f"One dot per window ({len(w)} windows of {row['window_end_s'] - row['window_start_s']:.1f} s). "
+                               f"Lowest window mean {lo:.3e}, "
                                f"highest {hi:.3e}: a spread of {row['window_variation_pct']:.0f} % of the reported "
                                f"intensity (flagged from {ic['variation_flag_pct']:g} %).")
 
