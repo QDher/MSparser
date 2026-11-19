@@ -219,8 +219,11 @@ def converter_panel(prefix: str):
                              "Leave 'ThermoRawFileParser' to search the folder of this program.")
         m_in = c2.text_input("msconvert: program or folder (Waters)", cfg["convert"]["msconvert"],
                              key=f"{prefix}_msconvert", help="Example: C:\\Program Files\\ProteoWizard")
-        new = {"thermo_parser": t_in.strip().strip('"') or "ThermoRawFileParser",
-               "msconvert": m_in.strip().strip('"') or "msconvert"}
+        def _clean(v: str) -> str:
+            v = v.strip()  # a single quoted path loses its quotes; a quoted multi-part command is kept
+            return v[1:-1] if v.count('"') == 2 and v.startswith('"') and v.endswith('"') else v
+
+        new = {"thermo_parser": _clean(t_in) or "ThermoRawFileParser", "msconvert": _clean(m_in) or "msconvert"}
         if any(new[k] != cfg["convert"][k] for k in new):
             cfg["convert"].update(new)
             save_cfg(root, cfg)
