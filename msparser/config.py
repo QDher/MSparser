@@ -65,7 +65,7 @@ DEFAULTS = {
     # "targets" maps a target_id to its own window and takes precedence.
     "manual_windows": {"global": None, "targets": {}},
     # Intensity-extraction mode (see intensity.py)
-    "mode": "stability",  # stability | intensity
+    "mode": "intensity",  # intensity | stability
     "intensity": {
         "ppm_steps": [5, 10, 15, 20],   # tried in this order; the first with a signal is used
         "min_scans": 5,                 # consecutive scans required to report a peak

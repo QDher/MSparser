@@ -8,8 +8,8 @@ The program has two modes:
 
 | Mode | Question answered |
 |---|---|
+| **Intensity extraction** (default) | What is the intensity of every possible ion in every file? |
 | **Stability analysis** | In which time window of the acquisition is the signal stable? |
-| **Intensity extraction** | What is the intensity of every possible ion in every file? |
 
 In both modes you enter the molecules and ions that were injected; the
 program computes the ions they can form (protonated forms, adducts, pairs)
@@ -22,8 +22,8 @@ is sent over the internet.
 
 - [Windows: getting started](#windows-getting-started)
 - [Using the program](#using-the-program)
-- [Mode 1: stability analysis](#mode-1-stability-analysis)
-- [Mode 2: intensity extraction](#mode-2-intensity-extraction)
+- [Intensity extraction](#intensity-extraction)
+- [Stability analysis](#stability-analysis)
 - [macOS](#macos)
 - [Linux](#linux)
 - [Troubleshooting](#troubleshooting)
@@ -135,8 +135,8 @@ moved or copied: you indicate its folder inside the program.
 
 ### Choosing the mode
 
-Below the project folder, **Mode** switches between *Stability analysis* and
-*Intensity extraction*. Each mode has its own tabs, to be followed from left
+Below the project folder, **Mode** switches between *Intensity extraction*
+(selected in a new project) and *Stability analysis*. Each mode has its own tabs, to be followed from left
 to right. The list under the mode shows which steps are complete.
 
 ### Entering the components (both modes)
@@ -192,76 +192,7 @@ selection**.
 
 ---
 
-## Mode 1: stability analysis
-
-Finds the time window of the acquisition in which the signal is stable, for
-all ions together and for each ion.
-
-| Tab | What to do |
-|---|---|
-| **1. Settings** | Nothing has to be entered. Open *Advanced settings* only to change a default. |
-| **2. Components** | Enter the molecules and ions (see above). |
-| **3. Samples** | Indicate the folders and list the files (see below). |
-| **4. Targets** | Generate and review the ions (see above). |
-| **5. Run** | Check the **Converter** panel, click **Convert raw files**, then **Run analysis**. |
-| **6. Results** | Read the results (see below). |
-
-### Samples tab: choosing the files
-
-1. **Folder containing the raw files:** a subfolder of the project folder, or
-   a full path such as `D:\data\experiment1`. The number of raw files found
-   is shown below the field.
-2. **Folder for the converted files:** where the mzML files are written. If
-   you already have mzML files, give their folder here.
-3. Click **Add files found in these folders**. Each file becomes a row.
-4. Optionally fill in the other columns, then click **Save samples**.
-
-Only the files directly in the folder are listed; subfolders are not read in
-this mode. Rows can be deleted to leave files out.
-
-| Column | Meaning |
-|---|---|
-| file | File name without extension |
-| reaction | Optional label for the reaction or condition |
-| components | Optional: names of the components injected in that file, separated by `;`. Empty means all components |
-| run_order | Optional: position in the measurement sequence |
-
-### Results tab
-
-At the top, choose the m/z window (if several were set) and the time axis
-(acquisition time, or time after the signal appears).
-
-| Section | Content |
-|---|---|
-| **Global window** | The recommended time window and the percentage of traces that are stable in it. A *trace* is one ion in one file |
-| **Scaled intensity profiles** | All traces, each divided by its own typical level. The ions shown can be chosen |
-| **Traces with a stable signal in each window** | One cell per candidate window (start time × length); the colour is the percentage of traces stable in it |
-| **Stability limits** | The two limits that define "stable", derived from the data and editable (see below) |
-| **Manual window** | A window of your choice, evaluated next to the automatic ones |
-| **Per target ion** | The window of each ion, and a chart of its traces |
-| **Per acquisition** | For each file, how many ions are stable |
-| **Detection and flags** | For each ion, in how many files it was detected or flagged |
-
-**Stability limits.** A window is stable when its RSD is below the RSD limit
-and its drift is within the slope limit. Both are derived from the data and
-shown in two fields. To use your own values, change them and click **Apply
-and re-analyze**; every table and exported file then uses the new limits. An
-emptied field returns to the value derived from the data. On the *RSD versus
-intensity* chart, hover or click a dot to see which file and ion it is.
-
-**Manual window.** Enter a start and end time for all ions, or for single
-ions. The table lists the automatic and the manual windows side by side, and
-can be downloaded as `window_choice.csv`.
-
-**Download.** *Prepare report archive* at the bottom gives all tables and
-figures as one zip. They are also in the `report` folder of the project.
-
-Recommended first run: use one file and compare one trace with FreeStyle or
-MassLynx before adding the others.
-
----
-
-## Mode 2: intensity extraction
+## Intensity extraction
 
 Reports the intensity of every possible ion in every file, whatever its
 stability. Unstable signals are flagged, not removed. This mode is meant for
@@ -334,6 +265,75 @@ The numbers in steps 1, 2 and 4 can be changed in the **Extract** tab.
 Files already processed with the same settings are reused, so adding files
 and extracting again only processes the new ones. A file that cannot be read
 is listed with its error and does not stop the others.
+
+---
+
+## Stability analysis
+
+Finds the time window of the acquisition in which the signal is stable, for
+all ions together and for each ion.
+
+| Tab | What to do |
+|---|---|
+| **1. Settings** | Nothing has to be entered. Open *Advanced settings* only to change a default. |
+| **2. Components** | Enter the molecules and ions (see above). |
+| **3. Samples** | Indicate the folders and list the files (see below). |
+| **4. Targets** | Generate and review the ions (see above). |
+| **5. Run** | Check the **Converter** panel, click **Convert raw files**, then **Run analysis**. |
+| **6. Results** | Read the results (see below). |
+
+### Samples tab: choosing the files
+
+1. **Folder containing the raw files:** a subfolder of the project folder, or
+   a full path such as `D:\data\experiment1`. The number of raw files found
+   is shown below the field.
+2. **Folder for the converted files:** where the mzML files are written. If
+   you already have mzML files, give their folder here.
+3. Click **Add files found in these folders**. Each file becomes a row.
+4. Optionally fill in the other columns, then click **Save samples**.
+
+Only the files directly in the folder are listed; subfolders are not read in
+this mode. Rows can be deleted to leave files out.
+
+| Column | Meaning |
+|---|---|
+| file | File name without extension |
+| reaction | Optional label for the reaction or condition |
+| components | Optional: names of the components injected in that file, separated by `;`. Empty means all components |
+| run_order | Optional: position in the measurement sequence |
+
+### Results tab
+
+At the top, choose the m/z window (if several were set) and the time axis
+(acquisition time, or time after the signal appears).
+
+| Section | Content |
+|---|---|
+| **Global window** | The recommended time window and the percentage of traces that are stable in it. A *trace* is one ion in one file |
+| **Scaled intensity profiles** | All traces, each divided by its own typical level. The ions shown can be chosen |
+| **Traces with a stable signal in each window** | One cell per candidate window (start time × length); the colour is the percentage of traces stable in it |
+| **Stability limits** | The two limits that define "stable", derived from the data and editable (see below) |
+| **Manual window** | A window of your choice, evaluated next to the automatic ones |
+| **Per target ion** | The window of each ion, and a chart of its traces |
+| **Per acquisition** | For each file, how many ions are stable |
+| **Detection and flags** | For each ion, in how many files it was detected or flagged |
+
+**Stability limits.** A window is stable when its RSD is below the RSD limit
+and its drift is within the slope limit. Both are derived from the data and
+shown in two fields. To use your own values, change them and click **Apply
+and re-analyze**; every table and exported file then uses the new limits. An
+emptied field returns to the value derived from the data. On the *RSD versus
+intensity* chart, hover or click a dot to see which file and ion it is.
+
+**Manual window.** Enter a start and end time for all ions, or for single
+ions. The table lists the automatic and the manual windows side by side, and
+can be downloaded as `window_choice.csv`.
+
+**Download.** *Prepare report archive* at the bottom gives all tables and
+figures as one zip. They are also in the `report` folder of the project.
+
+Recommended first run: use one file and compare one trace with FreeStyle or
+MassLynx before adding the others.
 
 ---
 

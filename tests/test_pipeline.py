@@ -308,17 +308,23 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
 
 
 def test_app_starts(tmp_path):
-    """The interface loads on an empty project without raising."""
+    """The interface loads on an empty project without raising, in both modes."""
     AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
     app = Path(__file__).parent.parent / "msparser" / "app.py"
     old = sys.argv
     sys.argv = ["app.py", str(tmp_path)]
     try:
         at = AppTest.from_file(str(app), default_timeout=120).run()
+        assert not at.exception, [e.value for e in at.exception]
+        # a new project opens in the intensity-extraction mode
+        assert [t.label for t in at.tabs][:2] == ["1. Components", "2. Files"]
+        assert [r for r in at.radio if r.label == "Mode"][0].options[0] == "Intensity extraction"
+        # the stability mode is one click away
+        at = [r for r in at.radio if r.label == "Mode"][0].set_value("stability").run()
+        assert not at.exception, [e.value for e in at.exception]
+        assert any(t.label == "Folder containing the raw files" for t in at.text_input)
     finally:
         sys.argv = old
-    assert not at.exception, [e.value for e in at.exception]
-    assert any(t.label == "Folder containing the raw files" for t in at.text_input)
 
 
 def test_converter_found_in_program_folder(tmp_path, monkeypatch):

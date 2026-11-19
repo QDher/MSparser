@@ -85,6 +85,7 @@ components:
 """
 
 CONFIG = """\
+mode: stability
 vendor: thermo
 extraction:
   ppm_windows: [10, 5]

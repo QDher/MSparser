@@ -98,12 +98,12 @@ if not (root / "config.yaml").exists():
 cfg = user_cfg(root)
 paths = resolved(root)["paths"]
 work, rep = Path(paths["work_dir"]), Path(paths["report_dir"])
-MODES = {"stability": "Stability analysis", "intensity": "Intensity extraction"}
-mode = st.sidebar.radio("Mode", list(MODES), index=list(MODES).index(cfg.get("mode", "stability")),
+MODES = {"intensity": "Intensity extraction", "stability": "Stability analysis"}
+mode = st.sidebar.radio("Mode", list(MODES), index=list(MODES).index(cfg.get("mode", "intensity")),
                         format_func=MODES.get,
-                        help="Stability analysis: find the time window in which the signal is stable. "
-                             "Intensity extraction: report the intensity of every possible ion in every file.")
-if mode != cfg.get("mode", "stability"):
+                        help="Intensity extraction: report the intensity of every possible ion in every file. "
+                             "Stability analysis: find the time window in which the signal is stable.")
+if mode != cfg.get("mode", "intensity"):
     cfg["mode"] = mode
     save_cfg(root, cfg)
     st.rerun()
