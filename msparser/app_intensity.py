@@ -29,6 +29,16 @@ FLAG_HELP = {
 }
 
 
+def _shown(path: Path, root: Path) -> str:
+    """A folder as shown to the user: relative to the project folder when it
+    is inside it, otherwise its full path."""
+    try:
+        rel = Path(path).resolve().relative_to(Path(root).resolve())
+        return str(rel) if str(rel) != "." else "(project folder)"
+    except ValueError:
+        return str(path)
+
+
 def _load(path: Path) -> pd.DataFrame:
     return pd.read_csv(path) if path.exists() else pd.DataFrame()
 
@@ -91,8 +101,9 @@ def render(ctx: dict):
         else:
             table = pd.DataFrame({
                 "use": [n in saved for n in names],
-                "folder": [n or "(top folder)" for n in names],
+                "raw folder": [_shown(raw_p / n, root) for n in names],
                 "raw files": [int(raw_folders.get(n, 0)) for n in names],
+                "converted folder": [_shown(mzml_p / n, root) for n in names],
                 "converted files": [int(data_folders.get(n, 0)) for n in names],
             })
             b1, b2, _ = st.columns([1, 1, 4])
@@ -107,7 +118,7 @@ def render(ctx: dict):
                 st.session_state.pop("folder_editor", None)
                 st.rerun()
             edited = st.data_editor(table, hide_index=True, width="stretch", key="folder_editor",
-                                    disabled=["folder", "raw files", "converted files"])
+                                    disabled=["raw folder", "raw files", "converted folder", "converted files"])
             picked = [n for n, u in zip(names, edited["use"]) if bool(u)]
             if picked != [n for n in names if n in saved] or ic.get("folders") is None:
                 ic["folders"] = picked
@@ -115,25 +126,32 @@ def render(ctx: dict):
                 st.rerun()
             n_sel_raw = int(sum(raw_folders.get(n, 0) for n in picked))
             n_sel_data = int(sum(data_folders.get(n, 0) for n in picked))
-            st.caption(f"{len(picked)} folder(s) ticked: {n_sel_raw} raw file(s), {n_sel_data} converted file(s). "
-                       "Only ticked folders are converted and extracted. A folder does not include its subfolders: "
-                       "tick each one wanted.")
+            st.caption(f"Folders are given from the project folder `{root}`; a full path is shown for folders "
+                       f"outside it. {len(picked)} row(s) ticked: {n_sel_raw} raw file(s), {n_sel_data} converted "
+                       "file(s). Only ticked rows are converted and extracted. A folder does not include its "
+                       "subfolders: tick each one wanted.")
             if st.button("Convert the raw files of the ticked folders", disabled=n_sel_raw == 0,
                          help="Already converted files are skipped."):
                 buf = io.StringIO()
                 try:
                     with st.spinner("Converting..."), contextlib.redirect_stdout(buf):
                         cli.cmd_convert(resolved(root), None)
-                    st.success("Conversion done.")
+                    st.session_state["int_conv_error"] = None
                 except (Exception, SystemExit) as e:
-                    st.error(f"Conversion failed: {e}")
+                    st.session_state["int_conv_error"] = str(e)
                 st.session_state["int_log"] = buf.getvalue()
+                st.rerun()  # update the numbers of converted files
+            if st.session_state.get("int_conv_error"):
+                st.error(f"Conversion failed: {st.session_state['int_conv_error']}")
+            elif st.session_state.get("int_log"):
+                st.success("Conversion done.")
             if st.session_state.get("int_log"):
                 st.code(st.session_state["int_log"])
             found = discover_files(mzml_p, picked)
             if len(found):
                 with st.expander(f"{len(found)} converted file(s) in the ticked folders"):
-                    st.dataframe(found[["folder", "name"]], hide_index=True, width="stretch", height=300)
+                    st.dataframe(found.assign(folder=found["folder"].map(lambda x: _shown(mzml_p / x, root)))[
+                        ["folder", "name"]], hide_index=True, width="stretch", height=300)
 
     with tabs[2]:
         ctx["targets_editor"]()
@@ -221,14 +239,16 @@ def render(ctx: dict):
         st.subheader("Intensity table")
         fl = st.columns([2, 2, 1])
         folders = sorted(values["folder"].unique())
+        data_root = Path(paths["mzml_dir"])
         pick_folders = fl[0].multiselect("Folders", folders, default=folders,
-                                         format_func=lambda x: x or "(top folder)")
+                                         format_func=lambda x: _shown(data_root / x, root))
         ions = sorted(det["target_id"].unique())
         pick_ions = fl[1].multiselect("Ions", ions, default=ions)
         layout = fl[2].radio("Layout", ["files × ions", "one row per value"])
         if layout == "files × ions":
             keep_cols = ["folder", "name"] + [c for c in pick_ions if c in matrix]
             mx = matrix[matrix["folder"].fillna("").isin(pick_folders)][keep_cols]
+            mx = mx.assign(folder=mx["folder"].fillna("").map(lambda x: _shown(data_root / x, root)))
             st.dataframe(mx, hide_index=True, width="stretch",
                          column_config={c: st.column_config.NumberColumn(format="%.3e") for c in pick_ions})
             st.caption("Empty cell: ion not detected in that file. Flags are in the 'one row per value' layout.")
@@ -239,6 +259,7 @@ def render(ctx: dict):
                                                               | (values["status"] != "detected"))]
             if only_flag:
                 lv = lv[lv["flags"] != ""]
+            lv = lv.assign(folder=lv["folder"].map(lambda x: _shown(data_root / x, root)))
             show = ["folder", "name", "target_id", "status", "intensity", "flags", "rsd_pct", "window_variation_pct",
                     "mz_window_ppm", "ppm_error", "mz_observed", "window_start_s", "window_end_s",
                     "scans_in_window", "selected_by"]

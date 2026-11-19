@@ -199,3 +199,31 @@ def test_only_chosen_folders_are_used(batch, capsys):
     (batch / "only.yaml").write_text(yaml.safe_dump(cfg))
     with pytest.raises(FileNotFoundError, match="selected folders"):
         main(["intensity", "-c", str(batch / "only.yaml")])
+
+
+def test_convert_command_without_arguments(tmp_path, capsys):
+    """The interface calls the conversion without command-line arguments."""
+    from msparser.cli import cmd_convert
+    from msparser.config import load_config
+
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "one.RAW").write_text("x")
+    conv = tmp_path / "conv.py"
+    conv.write_text("import sys, pathlib\ni = pathlib.Path(sys.argv[1][3:]); o = pathlib.Path(sys.argv[2][3:])\n"
+                    "(o / (i.stem + '.mzML')).write_text('data')\n")
+    (tmp_path / "config.yaml").write_text("vendor: thermo\nmode: intensity\nintensity: {folders: ['']}\n")
+    cfg = load_config(tmp_path / "config.yaml")
+    cfg["convert"]["thermo_parser"] = f'"{sys.executable}" "{conv}"'
+    cmd_convert(cfg, None)                       # must not raise
+    assert (tmp_path / "mzml" / "one.mzML").exists()
+    assert "1 file(s) converted" in capsys.readouterr().out
+
+
+def test_folder_labels(tmp_path):
+    from msparser.app_intensity import _shown
+
+    assert _shown(tmp_path / "raw", tmp_path) == "raw"
+    assert _shown(tmp_path / "raw" / "day1", tmp_path) == str(Path("raw") / "day1")
+    assert _shown(tmp_path, tmp_path) == "(project folder)"
+    outside = tmp_path.parent / "elsewhere"
+    assert _shown(outside, tmp_path) == str(outside)

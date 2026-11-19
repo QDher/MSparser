@@ -29,7 +29,7 @@ def cmd_convert(cfg, args):
     recursive = cfg["mode"] == "intensity"
     cmds = convert_all(cfg, dry_run=getattr(args, "dry_run", False), recursive=recursive,
                        folders=cfg["intensity"].get("folders") if recursive else None)
-    if args.dry_run:
+    if getattr(args, "dry_run", False):
         for c in cmds:
             print(" ".join(c))
 

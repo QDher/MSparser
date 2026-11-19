@@ -9,10 +9,7 @@ from pathlib import Path
 def main():
     base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     app = base / "msparser" / "app.py"
-    default, former = Path.home() / "MSparser_project", Path.home() / "mzstab_project"
-    if not default.exists() and former.exists():
-        default = former  # project folder created by a version named mzstab
-    project = sys.argv[1] if len(sys.argv) > 1 else str(default)
+    project = sys.argv[1] if len(sys.argv) > 1 else str(Path.home() / "MSparser_project")
     from streamlit.web import cli as stcli
 
     sys.argv = [

@@ -127,8 +127,9 @@ the settings and the results of one study, not the data:
 | Intermediate files (`work`) | The converted mzML files |
 | Result tables and figures (`report`) | |
 
-By default it is `MSparser_project` in your user folder. If a `mzstab_project`
-folder from an earlier version exists, it is used instead. To start another
+By default it is `MSparser_project` in your user folder. A project made with a
+version named *mzstab* is in `mzstab_project`; type that folder in the field
+to reopen it. To start another
 study, type another folder name; it is created if needed. Your data is never
 moved or copied: you indicate its folder inside the program.
 
@@ -281,7 +282,8 @@ many files (up to about a hundred) organised in folders.
 2. **Folder for the converted files:** where the mzML files are written. The
    folder tree of the raw files is reproduced there.
 3. In the table **Folders to use**, tick the folders wanted. Each row shows
-   the number of raw and converted files in that folder.
+   a raw folder and its converted counterpart, written from the project
+   folder (or as full paths when outside it), with their numbers of files.
 4. Check the **Converter** panel, then click **Convert the raw files of the
    ticked folders**.
 
