@@ -82,19 +82,31 @@ runs the tool for you; it only has to be present on the computer.
 Install [ProteoWizard](https://proteowizard.sourceforge.io), which contains
 `msconvert.exe`.
 
-**Tell the program where the converter is**
+**Let the program find the converter**
 
-In the program, select the mode *Stability analysis*, open the tab
-**1. Settings** > **Advanced settings** > **Converters**, and enter the full
-path of the converter, for example
-`C:\Tools\ThermoRawFileParser\ThermoRawFileParser.exe`. Giving the folder
-that contains it also works. Click **Save settings**.
+The simplest way: put the converter's folder inside the folder of the
+program, next to `mzstab-app.exe`. It is then found automatically, in every
+project.
 
-Tip: in File Explorer, hold Shift, right-click the `.exe`, and choose
-**Copy as path** to get the exact path.
+```
+mzstab-app\
+  mzstab-app.exe
+  _internal\
+  ThermoRawFileParser\        <- the unzipped converter
+    ThermoRawFileParser.exe
+```
 
-This setting is saved per project, so it is entered once for each new
-project folder.
+Otherwise, give its location in the program: open the **Converter** panel
+(stability mode: tab **5. Run**; intensity mode: tab **2. Files**) and enter
+the program file or the folder that contains it, for example
+`C:\Tools\ThermoRawFileParser`. This is saved per project.
+
+The panel shows whether the converter was found and where. Tip: in File
+Explorer, hold Shift, right-click the folder or the `.exe`, and choose
+**Copy as path**.
+
+When updating mzstab to a new version, move the converter folder into the
+new `mzstab-app` folder, or keep it elsewhere and give its location.
 
 If your files are already in mzML format, no converter is needed.
 
@@ -183,11 +195,11 @@ all ions together and for each ion.
 
 | Tab | What to do |
 |---|---|
-| **1. Settings** | Nothing has to be entered. Open *Advanced settings* only to give the converter path or to change a default. |
+| **1. Settings** | Nothing has to be entered. Open *Advanced settings* only to change a default. |
 | **2. Components** | Enter the molecules and ions (see above). |
 | **3. Samples** | Indicate the folders and list the files (see below). |
 | **4. Targets** | Generate and review the ions (see above). |
-| **5. Run** | Click **Convert raw files**, then **Run analysis**. |
+| **5. Run** | Check the **Converter** panel, click **Convert raw files**, then **Run analysis**. |
 | **6. Results** | Read the results (see below). |
 
 ### Samples tab: choosing the files
@@ -267,7 +279,8 @@ many files (up to about a hundred) organised in folders.
    folder tree of the raw files is reproduced there.
 3. In the table **Folders to use**, tick the folders wanted. Each row shows
    the number of raw and converted files in that folder.
-4. Click **Convert the raw files of the ticked folders**.
+4. Check the **Converter** panel, then click **Convert the raw files of the
+   ticked folders**.
 
 - Nothing is used until it is ticked. *Tick all* selects everything.
 - A ticked folder does not include its subfolders; tick each one wanted.
@@ -356,8 +369,7 @@ it. macOS may ask for confirmation the first time (right-click > **Open**).
 - **Thermo:** download the ThermoRawFileParser file ending in `-osx.zip`
   (Intel) or `-osx-arm64.zip` (Apple silicon) from its
   [releases page](https://github.com/compomics/ThermoRawFileParser/releases),
-  unzip it, and give the path of the `ThermoRawFileParser` program under
-  *Settings > Advanced settings > Converters*.
+  unzip it, and give its folder in the **Converter** panel of the program.
 - **Waters:** conversion is not possible on macOS. Convert the files to mzML
   on a Windows computer and give the folder of the mzML files in the program.
 
@@ -400,8 +412,7 @@ mzstab ui ~/mzstab_project
 - **Thermo:** download the ThermoRawFileParser file ending in `-linux.zip`
   from its
   [releases page](https://github.com/compomics/ThermoRawFileParser/releases),
-  unzip it, and give the path of the `ThermoRawFileParser` program under
-  *Settings > Advanced settings > Converters*.
+  unzip it, and give its folder in the **Converter** panel of the program.
 - **Waters:** conversion is not possible natively on Linux. Convert the files
   to mzML on a Windows computer.
 
@@ -418,7 +429,7 @@ Using the program is then identical to Windows.
 | *Windows protected your PC* | Click **More info** > **Run anyway** |
 | The browser page does not open | Open `http://localhost:8501` in the browser while the console window is open |
 | *Convert failed: no .raw file in …* | The raw folder is empty or wrong. Check the folder field; the path used is shown in the Run tab |
-| *converter not found* | Enter the full path of the converter under *Settings > Advanced settings > Converters* |
+| *converter not found* | Put the converter's folder inside the `mzstab-app` folder, or give its location in the **Converter** panel |
 | *Access denied* (*Accès refusé*) at conversion | The converter setting is not the program file, or Windows blocks it: right-click the `.exe` > **Properties** > **Unblock** |
 | No adduct such as `[M+Na]+` in the targets | The ion must be entered with the type *Ion (already charged)*; then generate the targets again |
 | An ion is "not detected" | Check its formula and charge, the polarity of the file and the scan range. In the stability mode, see *Detection and flags*; a mass error above the m/z window also gives this result |

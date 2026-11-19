@@ -76,6 +76,8 @@ def render(ctx: dict):
         all_data = discover_files(mzml_p)
         f2.caption(f"{mzml_p} — {len(all_data)} mzML/CSV file(s) in all folders")
 
+        ctx["converter_panel"]("int")
+
         # folders found on either side, with the user's choice
         raw_folders = pd.Series(["" if r.parent == raw_p else r.parent.relative_to(raw_p).as_posix() for r in raws],
                                 dtype=str).value_counts()
@@ -117,8 +119,7 @@ def render(ctx: dict):
                        "Only ticked folders are converted and extracted. A folder does not include its subfolders: "
                        "tick each one wanted.")
             if st.button("Convert the raw files of the ticked folders", disabled=n_sel_raw == 0,
-                         help="Needs ThermoRawFileParser or msconvert (program path under Stability analysis > "
-                              "Settings > Advanced settings > Converters). Already converted files are skipped."):
+                         help="Already converted files are skipped."):
                 buf = io.StringIO()
                 try:
                     with st.spinner("Converting..."), contextlib.redirect_stdout(buf):

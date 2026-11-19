@@ -24,7 +24,7 @@ import yaml
 from mzstab import analyze as an
 from mzstab import cli
 from mzstab.config import DEFAULTS, _merge, load_config
-from mzstab.convert import find_raw
+from mzstab.convert import find_raw, install_dir, locate_converter
 from mzstab.detect import load_detected, resolve_resolution, resolve_windows
 from mzstab.analyze import manual_window_for
 from mzstab.targets import Component, generate_targets, normalize_mode
@@ -195,12 +195,45 @@ def targets_editor(components_tab: str = "tab 2"):
             st.success(f"{int(t_edit['use'].sum())} of {len(t_edit)} targets selected.")
 
 
+# ---------------------------------------------------------------- converter
+def converter_panel(prefix: str):
+    """Where the raw-file converter is, with its status. Shared by both modes."""
+    rcfg = resolved(root)
+    thermo, msc = locate_converter(rcfg, "thermo_parser"), locate_converter(rcfg, "msconvert")
+    if thermo or msc:
+        label = "Converter found: " + ", ".join(n for n, f in (("ThermoRawFileParser", thermo), ("msconvert", msc)) if f)
+    else:
+        label = "Converter not found — open to set it"
+    with st.expander(label, expanded=not (thermo or msc)):
+        st.markdown(
+            "Raw files are converted by a separate free program: **ThermoRawFileParser** (Thermo) or "
+            "**msconvert** from ProteoWizard (Waters). It is found automatically in either case:\n"
+            f"- its folder is placed inside the folder of this program: `{install_dir()}` "
+            "(for example unzip ThermoRawFileParser there);\n"
+            "- or its location is given below, as the program file or the folder that contains it.")
+        st.write(("✅ ThermoRawFileParser: " + thermo) if thermo else "⬜ ThermoRawFileParser: not found")
+        st.write(("✅ msconvert: " + msc) if msc else "⬜ msconvert: not found (only needed for Waters files)")
+        c1, c2 = st.columns(2)
+        t_in = c1.text_input("ThermoRawFileParser: program or folder", cfg["convert"]["thermo_parser"],
+                             key=f"{prefix}_thermo", help="Example: C:\\Tools\\ThermoRawFileParser. "
+                             "Leave 'ThermoRawFileParser' to search the folder of this program.")
+        m_in = c2.text_input("msconvert: program or folder (Waters)", cfg["convert"]["msconvert"],
+                             key=f"{prefix}_msconvert", help="Example: C:\\Program Files\\ProteoWizard")
+        new = {"thermo_parser": t_in.strip().strip('"') or "ThermoRawFileParser",
+               "msconvert": m_in.strip().strip('"') or "msconvert"}
+        if any(new[k] != cfg["convert"][k] for k in new):
+            cfg["convert"].update(new)
+            save_cfg(root, cfg)
+            st.rerun()
+
+
 if mode == "intensity":
     from mzstab import app_intensity
 
     app_intensity.render(dict(
         root=root, cfg=cfg, paths=paths, work=work, rep=rep, save_cfg=save_cfg, resolved=resolved,
-        parse_numbers=parse_numbers, components_editor=components_editor, targets_editor=targets_editor))
+        parse_numbers=parse_numbers, components_editor=components_editor, targets_editor=targets_editor,
+        converter_panel=converter_panel))
     st.stop()
 
 status = {
@@ -262,12 +295,7 @@ with tabs[0]:
                                           min_value=1, step=1)
             with c3:
                 st.caption("The folders of the raw and converted files are chosen in tab 3 (Samples).")
-                st.markdown("**Converters**")
-                thermo_parser = st.text_input("ThermoRawFileParser program or its folder", cfg["convert"]["thermo_parser"],
-                                              help="Program name if it is on the PATH, otherwise its full path, "
-                                                   "e.g. C:\\Tools\\ThermoRawFileParser\\ThermoRawFileParser.exe")
-                msconvert = st.text_input("msconvert program (Waters)", cfg["convert"]["msconvert"],
-                                          help="Full path of msconvert.exe if it is not on the PATH")
+                st.caption("The converter (ThermoRawFileParser, msconvert) is set in tab 5 (Run).")
                 st.markdown("**Conversion (Waters lock mass)**")
                 lock = st.text_input("Lock-mass m/z, positive", _txt(cfg["convert"]["lockmass_mz"]))
                 lock_neg = st.text_input("Lock-mass m/z, negative", _txt(cfg["convert"]["lockmass_mz_neg"]))
@@ -287,9 +315,7 @@ with tabs[0]:
                 cfg["scan_filter"]["functions"] = [int(x) for x in parse_numbers(functions)] if functions.strip() else None
                 cfg["windows"].update(lengths_s=sorted(parse_numbers(lengths)) if lengths.strip() else "auto",
                                       step_s=opt_float(step_s) or "auto", min_scans=int(min_scans))
-                cfg["convert"].update(lockmass_mz=opt_float(lock), lockmass_mz_neg=opt_float(lock_neg),
-                                      thermo_parser=thermo_parser.strip() or "ThermoRawFileParser",
-                                      msconvert=msconvert.strip() or "msconvert")
+                cfg["convert"].update(lockmass_mz=opt_float(lock), lockmass_mz_neg=opt_float(lock_neg))
                 cfg["csv"].update(time_unit=csv_unit, polarity=int(csv_pol))
                 save_cfg(root, cfg)
                 st.success("Settings saved.")
@@ -390,9 +416,9 @@ with tabs[4]:
     ready = status["Components"] and status["Samples"]
     if not ready:
         st.warning("Save the components (tab 2) and the samples (tab 3) first.")
-    st.caption("Conversion needs ThermoRawFileParser or msconvert installed (program path under Settings > "
-               "Advanced settings > Converters). It is skipped for files that already have an mzML. If mzML "
-               "files are already in the data folder, start at 'Run analysis'.")
+    st.caption("Conversion is skipped for files that already have an mzML. If mzML files are already in the data "
+               "folder, start at 'Run analysis'.")
+    converter_panel("stab")
     st.caption(f"Raw folder: {paths['raw_dir']} — data folder: {paths['mzml_dir']}")
     b = st.columns(5)
     none = argparse.Namespace(force=False, dry_run=False)

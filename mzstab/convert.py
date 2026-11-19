@@ -9,6 +9,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -35,27 +36,70 @@ PROGRAM_NAMES = {
 }
 
 
+def install_dir() -> Path:
+    """Folder of the program: the one holding mzstab-app.exe for the packaged
+    application, otherwise the folder of the source code."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent.parent
+
+
+def _search(folder: Path, names, depth: int = 3):
+    """First file with one of `names` in a folder and its subfolders (to `depth`),
+    skipping the program's own library folders."""
+    skip = {"_internal", ".git", "build", "dist", "node_modules", "__pycache__", ".build-venv"}
+    level = [folder]
+    for _ in range(depth + 1):
+        nxt = []
+        for d in level:
+            try:
+                entries = sorted(d.iterdir())
+            except OSError:
+                continue
+            for name in names:
+                for p in entries:
+                    if p.name.lower() == name.lower() and p.is_file():
+                        return p
+            nxt += [p for p in entries if p.is_dir() and p.name not in skip and p.suffix.lower() != ".raw"]
+        level = nxt
+    return None
+
+
 def _program(spec: str, key: str = "thermo_parser") -> list[str]:
     """Converter setting -> command prefix. Accepts a program name, the full
     path of the program (spaces allowed), the folder that contains it, or a
-    prefixed call such as 'mono /x/ThermoRawFileParser.exe'."""
+    prefixed call such as 'mono /x/ThermoRawFileParser.exe'. A plain program
+    name that is not on the PATH is looked for in the program's own folder."""
     spec = str(spec).strip()
     whole = spec[1:-1] if spec.count('"') == 2 and spec.startswith('"') and spec.endswith('"') else spec
     if Path(whole).is_dir():
         # a folder was given: look for the program inside it (and its subfolders)
-        folder = Path(whole)
-        for name in PROGRAM_NAMES[key]:
-            hits = sorted(p for p in folder.rglob(name) if p.is_file())
-            if hits:
-                return [str(hits[0])]
+        hit = _search(Path(whole), PROGRAM_NAMES[key], depth=4)
+        if hit:
+            return [str(hit)]
         raise FileNotFoundError(
-            f"'{folder}' is a folder and contains no {PROGRAM_NAMES[key][0]}. "
-            f"Give the full path of the program file, for example {folder / PROGRAM_NAMES[key][0]}"
+            f"'{whole}' is a folder and contains no {PROGRAM_NAMES[key][0]}. "
+            f"Give the full path of the program file, for example {Path(whole) / PROGRAM_NAMES[key][0]}"
         )
     if Path(whole).exists() or shutil.which(whole):
         return [whole]
+    if not any(sep in whole for sep in ("/", "\\", " ")):
+        # default: the converter placed in (a subfolder of) the program's folder
+        hit = _search(install_dir(), PROGRAM_NAMES[key])
+        if hit:
+            return [str(hit)]
     parts = shlex.split(spec, posix=os.name != "nt")
     return [x.strip('"') for x in parts] or [spec]
+
+
+def locate_converter(cfg: dict, key: str = "thermo_parser"):
+    """Path of the converter that would be used, or None if it cannot be found."""
+    try:
+        cmd = _program(cfg["convert"][key], key)
+    except FileNotFoundError:
+        return None
+    found = cmd[0] if Path(cmd[0]).exists() else shutil.which(cmd[0])
+    return str(found) if found else None
 
 
 def find_raw(raw_dir: Path, recursive: bool = False) -> list[Path]:
@@ -117,8 +161,8 @@ def convert_all(cfg: dict, dry_run: bool = False, recursive: bool = False, folde
         if not (Path(cmd[0]).exists() or shutil.which(cmd[0])):
             name = "ThermoRawFileParser" if vendor == "thermo" else "msconvert (ProteoWizard)"
             raise FileNotFoundError(
-                f"converter not found: '{cmd[0]}'. Install {name} and give the full path of its program "
-                f"in Settings > Advanced settings > Converters."
+                f"converter not found: '{cmd[0]}'. Install {name}, then either put its folder inside "
+                f"{install_dir()} or give its path in the converter settings."
             )
         try:
             r = subprocess.run(cmd, capture_output=True, text=True)

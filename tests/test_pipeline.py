@@ -319,3 +319,26 @@ def test_app_starts(tmp_path):
         sys.argv = old
     assert not at.exception, [e.value for e in at.exception]
     assert any(t.label == "Folder containing the raw files" for t in at.text_input)
+
+
+def test_converter_found_in_program_folder(tmp_path, monkeypatch):
+    """With the default setting, the converter is looked for in the folder of
+    the program and its subfolders (not in the program's own libraries)."""
+    from mzstab import convert
+
+    monkeypatch.setattr(convert, "install_dir", lambda: tmp_path)
+    cfg = {"convert": {"thermo_parser": "ThermoRawFileParser", "msconvert": "msconvert"}}
+    (tmp_path / "_internal" / "lib").mkdir(parents=True)
+    (tmp_path / "_internal" / "lib" / "ThermoRawFileParser.exe").write_text("x")
+    assert convert.locate_converter(cfg, "thermo_parser") is None
+    exe = tmp_path / "ThermoRawFileParser-v.2.0.0-dev-win" / "ThermoRawFileParser.exe"
+    exe.parent.mkdir()
+    exe.write_text("x")
+    assert convert.locate_converter(cfg, "thermo_parser") == str(exe)
+    assert convert.locate_converter(cfg, "msconvert") is None
+    # an explicit path takes precedence over the search
+    other = tmp_path / "elsewhere" / "ThermoRawFileParser.exe"
+    other.parent.mkdir()
+    other.write_text("x")
+    cfg["convert"]["thermo_parser"] = str(other.parent)
+    assert convert.locate_converter(cfg, "thermo_parser") == str(other)
