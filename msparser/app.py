@@ -1,8 +1,8 @@
-"""Streamlit interface. Start with:  mzstab ui <project folder>
+"""Streamlit interface. Start with:  msparser ui <project folder>
 
 A project folder holds one vendor run: config.yaml, components.yaml,
 samples.csv, mzml/, work/, report/. The interface writes the same files the
-command line uses, so every run can be repeated with `mzstab run -c config.yaml`.
+command line uses, so every run can be repeated with `msparser run -c config.yaml`.
 """
 from __future__ import annotations
 
@@ -21,13 +21,13 @@ import pandas as pd
 import streamlit as st
 import yaml
 
-from mzstab import analyze as an
-from mzstab import cli
-from mzstab.config import DEFAULTS, _merge, load_config
-from mzstab.convert import find_raw, install_dir, locate_converter
-from mzstab.detect import load_detected, resolve_resolution, resolve_windows
-from mzstab.analyze import manual_window_for
-from mzstab.targets import Component, generate_targets, normalize_mode
+from msparser import analyze as an
+from msparser import cli
+from msparser.config import DEFAULTS, _merge, load_config
+from msparser.convert import find_raw, install_dir, locate_converter
+from msparser.detect import load_detected, resolve_resolution, resolve_windows
+from msparser.analyze import manual_window_for
+from msparser.targets import Component, generate_targets, normalize_mode
 
 CHARGE_COLS = {"+1": 1, "+2": 2, "-1": -1, "-2": -2}
 # labels shown in the interface for the two charge modes stored in components.yaml
@@ -35,7 +35,7 @@ MODE_LABELS = {"proton": "Molecule (gains or loses H⁺)", "intrinsic": "Ion (al
 MODE_VALUES = {v: k for k, v in MODE_LABELS.items()}
 GREY, BLUE = "#898781", "#2a78d6"
 
-st.set_page_config(page_title="mzstab", layout="wide")
+st.set_page_config(page_title="MSparser", layout="wide")
 
 
 # ------------------------------------------------------------------ project
@@ -85,7 +85,7 @@ def run_steps(root: Path, steps):
 
 # ------------------------------------------------------------------ sidebar
 default_root = sys.argv[1] if len(sys.argv) > 1 else "."
-st.sidebar.title("mzstab")
+st.sidebar.title("MSparser")
 root = Path(st.sidebar.text_input("Project folder", str(Path(default_root).resolve()))).expanduser()
 if not root.exists():
     st.sidebar.warning("Folder does not exist.")
@@ -228,7 +228,7 @@ def converter_panel(prefix: str):
 
 
 if mode == "intensity":
-    from mzstab import app_intensity
+    from msparser import app_intensity
 
     app_intensity.render(dict(
         root=root, cfg=cfg, paths=paths, work=work, rep=rep, save_cfg=save_cfg, resolved=resolved,
@@ -752,4 +752,4 @@ with tabs[5]:
     if st.button("Prepare report archive"):
         st.session_state["zip"] = Path(shutil.make_archive(str(work / "report"), "zip", rep)).read_bytes()
     if "zip" in st.session_state:
-        st.download_button("Download report (.zip)", st.session_state["zip"], "mzstab_report.zip")
+        st.download_button("Download report (.zip)", st.session_state["zip"], "MSparser_report.zip")

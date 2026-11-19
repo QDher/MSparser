@@ -37,7 +37,7 @@ PROGRAM_NAMES = {
 
 
 def install_dir() -> Path:
-    """Folder of the program: the one holding mzstab-app.exe for the packaged
+    """Folder of the program: the one holding MSparser.exe for the packaged
     application, otherwise the folder of the source code."""
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent

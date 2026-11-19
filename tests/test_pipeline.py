@@ -8,8 +8,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from mzstab.cli import main
-from mzstab.targets import Component, generate_targets
+from msparser.cli import main
+from msparser.targets import Component, generate_targets
 
 
 def _targets():
@@ -113,7 +113,7 @@ def test_csv_input(project, tmp_path):
     """The same spectra given as CSV (one row per peak) give the same windows."""
     import shutil
 
-    from mzstab.io import read_mzml
+    from msparser.io import read_mzml
 
     (tmp_path / "mzml").mkdir()
     for f in ("config.yaml", "components.yaml", "samples.csv"):
@@ -219,8 +219,8 @@ def test_pair_targets():
 
 
 def test_convert_reports_and_fails_clearly(tmp_path, capsys):
-    from mzstab.config import load_config
-    from mzstab.convert import convert_all
+    from msparser.config import load_config
+    from msparser.convert import convert_all
 
     (tmp_path / "config.yaml").write_text("vendor: thermo\n")
     cfg = load_config(tmp_path / "config.yaml")
@@ -256,7 +256,7 @@ def test_convert_reports_and_fails_clearly(tmp_path, capsys):
 
 
 def test_converter_setting_may_be_a_folder(tmp_path):
-    from mzstab.convert import _program
+    from msparser.convert import _program
 
     sub = tmp_path / "ThermoRawFileParser-win" / "inner"
     sub.mkdir(parents=True)
@@ -310,7 +310,7 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
 def test_app_starts(tmp_path):
     """The interface loads on an empty project without raising."""
     AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
-    app = Path(__file__).parent.parent / "mzstab" / "app.py"
+    app = Path(__file__).parent.parent / "msparser" / "app.py"
     old = sys.argv
     sys.argv = ["app.py", str(tmp_path)]
     try:
@@ -324,7 +324,7 @@ def test_app_starts(tmp_path):
 def test_converter_found_in_program_folder(tmp_path, monkeypatch):
     """With the default setting, the converter is looked for in the folder of
     the program and its subfolders (not in the program's own libraries)."""
-    from mzstab import convert
+    from msparser import convert
 
     monkeypatch.setattr(convert, "install_dir", lambda: tmp_path)
     cfg = {"convert": {"thermo_parser": "ThermoRawFileParser", "msconvert": "msconvert"}}

@@ -11,9 +11,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from mzstab import cli
-from mzstab.convert import find_raw
-from mzstab.intensity import FLAGS, discover_files
+from msparser import cli
+from msparser.convert import find_raw
+from msparser.intensity import FLAGS, discover_files
 
 GREY, BLUE, ORANGE = "#898781", "#2a78d6", "#eb6834"
 PEAK_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
@@ -375,4 +375,4 @@ def render(ctx: dict):
         if st.button("Prepare archive of all tables"):
             st.session_state["int_zip"] = Path(shutil.make_archive(str(work / "intensity_report"), "zip", rep)).read_bytes()
         if "int_zip" in st.session_state:
-            st.download_button("Download all tables (.zip)", st.session_state["int_zip"], "mzstab_intensity.zip")
+            st.download_button("Download all tables (.zip)", st.session_state["int_zip"], "MSparser_intensity.zip")

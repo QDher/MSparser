@@ -1,5 +1,5 @@
 [project]
-name = "mzstab"
+name = "msparser"
 version = "0.1.0"
 description = "Signal stability and time-window selection in time-resolved m/z spectra (targeted)"
 requires-python = ">=3.10"
@@ -13,11 +13,12 @@ test = ["pytest"]
 ui = ["streamlit"]
 
 [project.scripts]
-mzstab = "mzstab.cli:main"
+msparser = "msparser.cli:main"
+mzstab = "msparser.cli:main"   # former name, kept as an alias
 
 [build-system]
 requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["mzstab"]
+packages = ["msparser"]

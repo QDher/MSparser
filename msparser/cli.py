@@ -266,7 +266,7 @@ def cmd_ui(args):
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="mzstab", description=__doc__)
+    p = argparse.ArgumentParser(prog="msparser", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, fn, hlp in (
         ("convert", cmd_convert, "vendor raw -> centroided mzML"),

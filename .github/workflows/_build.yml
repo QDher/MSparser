@@ -22,18 +22,18 @@ jobs:
           python-version: "3.12"
       - run: pip install ".[ui,test]" pyinstaller
       - run: python -m pytest -q
-      - run: pyinstaller --noconfirm packaging/mzstab.spec
+      - run: pyinstaller --noconfirm packaging/msparser.spec
       - uses: actions/upload-artifact@v4
         with:
-          name: mzstab-app-${{ inputs.label }}
-          path: dist/mzstab-app
+          name: MSparser-${{ inputs.label }}
+          path: dist/MSparser
       - name: Attach to release
         if: env.TAG != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ZIP="mzstab-app-${{ inputs.label }}-${TAG}"
-          python -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'dist', 'mzstab-app')" "$ZIP"
+          ZIP="MSparser-${{ inputs.label }}-${TAG}"
+          python -c "import shutil, sys; shutil.make_archive(sys.argv[1], 'zip', 'dist', 'MSparser')" "$ZIP"
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" \
-            --prerelease --title "mzstab $TAG" --notes-file packaging/release_notes.md || true
+            --prerelease --title "MSparser $TAG" --notes-file packaging/release_notes.md || true
           gh release upload "$TAG" "$ZIP.zip" --clobber

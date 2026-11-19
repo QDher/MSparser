@@ -1,4 +1,4 @@
-# mzstab
+# MSparser
 
 Analysis of time-resolved m/z spectra acquired without chromatography
 (direct infusion, ambient ionization, reaction monitoring; typically about
@@ -41,13 +41,15 @@ No Python and no command line are needed.
 
 1. Open the [Releases page](https://github.com/QDher/MSparser/releases) and
    choose the most recent version.
-2. Under **Assets**, download `mzstab-app-windows-x64-<version>.zip`.
+2. Under **Assets**, download `MSparser-windows-x64-<version>.zip`.
+   (Versions up to v1.3 were named *mzstab*: their file is
+   `mzstab-app-windows-x64-<version>.zip` and the program `mzstab-app.exe`.)
    Do not take *Source code (zip)*: it contains the program's source, not the
    program.
 3. Right-click the downloaded zip and choose **Extract All**. The program
    does not work when started from inside the zip.
-4. Open the extracted `mzstab-app` folder and double-click `mzstab-app.exe`
-   (Windows may show it as `mzstab-app`, type *Application*). The `_internal`
+4. Open the extracted `MSparser` folder and double-click `MSparser.exe`
+   (Windows may show it as `MSparser`, type *Application*). The `_internal`
    folder must stay next to it.
 5. If Windows shows a blue *Windows protected your PC* message, click
    **More info**, then **Run anyway**. The program is not digitally signed.
@@ -85,12 +87,12 @@ Install [ProteoWizard](https://proteowizard.sourceforge.io), which contains
 **Let the program find the converter**
 
 The simplest way: put the converter's folder inside the folder of the
-program, next to `mzstab-app.exe`. It is then found automatically, in every
+program, next to `MSparser.exe`. It is then found automatically, in every
 project.
 
 ```
-mzstab-app\
-  mzstab-app.exe
+MSparser\
+  MSparser.exe
   _internal\
   ThermoRawFileParser\        <- the unzipped converter
     ThermoRawFileParser.exe
@@ -105,8 +107,8 @@ The panel shows whether the converter was found and where. Tip: in File
 Explorer, hold Shift, right-click the folder or the `.exe`, and choose
 **Copy as path**.
 
-When updating mzstab to a new version, move the converter folder into the
-new `mzstab-app` folder, or keep it elsewhere and give its location.
+When updating MSparser to a new version, move the converter folder into the
+new `MSparser` folder, or keep it elsewhere and give its location.
 
 If your files are already in mzML format, no converter is needed.
 
@@ -125,7 +127,8 @@ the settings and the results of one study, not the data:
 | Intermediate files (`work`) | The converted mzML files |
 | Result tables and figures (`report`) | |
 
-By default it is `mzstab_project` in your user folder. To start another
+By default it is `MSparser_project` in your user folder. If a `mzstab_project`
+folder from an earlier version exists, it is used instead. To start another
 study, type another folder name; it is created if needed. Your data is never
 moved or copied: you indicate its folder inside the program.
 
@@ -350,7 +353,7 @@ Use one of the two options below; both need the Terminal.
 3. Start the program on a project folder of your choice:
 
    ```bash
-   mzstab ui ~/mzstab_project
+   msparser ui ~/MSparser_project
    ```
 
 **Option B: build the application on your Mac**
@@ -361,7 +364,7 @@ In the unzipped source folder:
 bash packaging/build.sh
 ```
 
-The application is created in `dist/mzstab-app`; start `mzstab-app` inside
+The application is created in `dist/MSparser`; start `MSparser` inside
 it. macOS may ask for confirmation the first time (right-click > **Open**).
 
 **Converters on macOS**
@@ -381,21 +384,21 @@ Using the program is then identical to Windows.
 
 **Application without Python**
 
-1. Download `mzstab-app-linux-x64-<version>.zip` from the
+1. Download `MSparser-linux-x64-<version>.zip` from the
    [Releases page](https://github.com/QDher/MSparser/releases) and unzip it.
 2. Start it from a terminal:
 
    ```bash
-   chmod +x mzstab-app/mzstab-app
+   chmod +x MSparser/MSparser
    ```
 
    ```bash
-   ./mzstab-app/mzstab-app
+   ./MSparser/MSparser
    ```
 
 The program opens in the browser; if it does not, open the address shown in
 the terminal (usually `http://localhost:8501`). A project folder can be given
-as argument: `./mzstab-app/mzstab-app ~/my_project`.
+as argument: `./MSparser/MSparser ~/my_project`.
 
 **With Python** (3.10 or later), from the unzipped source code:
 
@@ -404,7 +407,7 @@ pip install ".[ui]"
 ```
 
 ```bash
-mzstab ui ~/mzstab_project
+msparser ui ~/MSparser_project
 ```
 
 **Converters on Linux**
@@ -424,12 +427,12 @@ Using the program is then identical to Windows.
 
 | Problem | Cause and solution |
 |---|---|
-| The unzipped folder contains `README.md` and `pyproject.toml` but no `.exe` | The *Source code* zip was downloaded. Take `mzstab-app-windows-x64-<version>.zip` |
+| The unzipped folder contains `README.md` and `pyproject.toml` but no `.exe` | The *Source code* zip was downloaded. Take `MSparser-windows-x64-<version>.zip` |
 | Nothing happens when starting the program | Extract the whole zip first. Wait up to a minute at the first start. Check that the antivirus does not block it |
 | *Windows protected your PC* | Click **More info** > **Run anyway** |
 | The browser page does not open | Open `http://localhost:8501` in the browser while the console window is open |
 | *Convert failed: no .raw file in …* | The raw folder is empty or wrong. Check the folder field; the path used is shown in the Run tab |
-| *converter not found* | Put the converter's folder inside the `mzstab-app` folder, or give its location in the **Converter** panel |
+| *converter not found* | Put the converter's folder inside the `MSparser` folder, or give its location in the **Converter** panel |
 | *Access denied* (*Accès refusé*) at conversion | The converter setting is not the program file, or Windows blocks it: right-click the `.exe` > **Properties** > **Unblock** |
 | No adduct such as `[M+Na]+` in the targets | The ion must be entered with the type *Ion (already charged)*; then generate the targets again |
 | An ion is "not detected" | Check its formula and charge, the polarity of the file and the scan range. In the stability mode, see *Detection and flags*; a mass error above the m/z window also gives this result |
@@ -559,19 +562,19 @@ Both modes run without the interface, on the files of a project folder
 (examples in `config/`):
 
 ```bash
-mzstab convert -c config.yaml
+msparser convert -c config.yaml
 ```
 
 ```bash
-mzstab targets -c config.yaml
+msparser targets -c config.yaml
 ```
 
 ```bash
-mzstab run -c config.yaml
+msparser run -c config.yaml
 ```
 
 ```bash
-mzstab intensity -c config.yaml --jobs 4
+msparser intensity -c config.yaml --jobs 4
 ```
 
 `run` executes the stability analysis (`targets` if no table exists, then
@@ -579,7 +582,7 @@ mzstab intensity -c config.yaml --jobs 4
 runs the intensity extraction and needs `mode: intensity` in the
 configuration for recursive conversion; `--jobs` processes files in
 parallel. `convert --dry-run` prints the converter commands without running
-them. `mzstab ui <project>` starts the interface.
+them. `msparser ui <project>` starts the interface.
 
 In `components.yaml`, the two component types are stored as `mode: proton`
 (molecule) and `mode: intrinsic` (ion); `molecule` and `ion` are accepted.
@@ -592,7 +595,7 @@ python -m pytest -q
 
 The tests generate synthetic mzML files (`tests/synth.py`) and run both
 modes, including the interface. `python tests/synth.py demo` creates a
-synthetic project that can be opened with `mzstab ui demo`.
+synthetic project that can be opened with `msparser ui demo`.
 
 ### Building the application
 
@@ -610,7 +613,7 @@ Linux or macOS:
 bash packaging/build.sh
 ```
 
-The result is the folder `dist/mzstab-app` (about 550 MB). The converters are
+The result is the folder `dist/MSparser` (about 550 MB). The converters are
 not included.
 
 Two GitHub Actions workflows build the application, started from the Actions

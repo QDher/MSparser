@@ -1,11 +1,11 @@
-First packaged version of mzstab: signal stability and time-window selection in time-resolved m/z spectra.
+MSparser: analysis of time-resolved m/z spectra (signal stability and intensity extraction).
 
 **Status: pre-release.** Tested on synthetic data only; not yet validated on real Thermo or Waters files. The packaged Windows and macOS applications have not been started and checked.
 
 ## Use
 
 1. Download the zip for your system below and unzip it.
-2. Start `mzstab-app.exe` (Windows) or `mzstab-app` (macOS, Linux). A console window shows the log and the interface opens in the browser.
+2. Start `MSparser.exe` (Windows) or `MSparser` (macOS, Linux). A console window shows the log and the interface opens in the browser.
 3. Follow the tabs from left to right. See the [README](https://github.com/QDher/MSparser#readme).
 
 ## Notes

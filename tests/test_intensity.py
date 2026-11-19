@@ -7,8 +7,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from mzstab.cli import main
-from mzstab.intensity import group_peaks
+from msparser.cli import main
+from msparser.intensity import group_peaks
 
 CAF = "caffeine [M+H]+"
 
@@ -108,8 +108,8 @@ def test_candidate_peaks_and_selection(batch):
     assert main_pk["relative_to_most_intense_pct"] == pytest.approx(33, abs=4)
 
     # the user picks the other peak for that file
-    from mzstab.cli import write_intensity_outputs
-    from mzstab.config import load_config
+    from msparser.cli import write_intensity_outputs
+    from msparser.config import load_config
 
     pd.DataFrame([dict(file=interf["file"], target_id=CAF, mz_observed=interf["mz_observed"])]).to_csv(
         batch / "work" / "peak_selection.csv", index=False)
@@ -135,7 +135,7 @@ def test_cache_reuses_unchanged_files(batch, capsys):
 
 def test_interface_of_intensity_mode(batch):
     AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
-    app = Path(__file__).parent.parent / "mzstab" / "app.py"
+    app = Path(__file__).parent.parent / "msparser" / "app.py"
     old = sys.argv
     sys.argv = ["app.py", str(batch)]
     try:
@@ -157,8 +157,8 @@ def test_interface_of_intensity_mode(batch):
 
 def test_recursive_conversion(tmp_path):
     """Raw files in subfolders are converted into the same folder tree."""
-    from mzstab.config import load_config
-    from mzstab.convert import convert_all, find_raw
+    from msparser.config import load_config
+    from msparser.convert import convert_all, find_raw
 
     (tmp_path / "raw" / "day1" / "set_a").mkdir(parents=True)
     (tmp_path / "raw" / "top.raw").write_text("x")
@@ -182,7 +182,7 @@ def test_recursive_conversion(tmp_path):
 def test_only_chosen_folders_are_used(batch, capsys):
     import yaml
 
-    from mzstab.intensity import discover_files
+    from msparser.intensity import discover_files
 
     assert len(discover_files(batch / "mzml")) == 6
     assert list(discover_files(batch / "mzml", ["day1"])["name"]) == ["a_plain", "b_offset8ppm"]
