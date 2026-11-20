@@ -45,10 +45,11 @@ def test_target_rules():
     assert t.loc["caffeine [M+H]+", "iso_ratio"] == pytest.approx(8 * 0.0107 / 0.9893, rel=1e-6)
 
 
-def test_proton_exchange_and_charges_up_to_three():
+def test_proton_exchange_adducts():
     comps = [
-        Component("acid", "C6H8O7", (-1, -2, -3), "proton"),
-        Component("base", "C8H10N4O2", (1,), "proton"),
+        Component("acid", "C6H8O7", (-1, -2, -3), "proton"),     # can lose up to 3 H+
+        Component("base", "C8H10N4O2", (1,), "proton"),          # can gain 1 H+
+        Component("sugar", "C6H12O6", (), "proton"),             # gains or loses no H+
         Component("sodium", "Na", (1,), "intrinsic"),
     ]
     t = generate_targets(comps).set_index("target_id")
@@ -56,15 +57,24 @@ def test_proton_exchange_and_charges_up_to_three():
     # two protons removed and one sodium added: total charge -1
     assert t.loc["acid [M-2H+Na]-", "mz"] == pytest.approx(m - 2 * h + na - e + 2 * e, abs=2e-5)
     assert t.loc["acid [M-2H+Na]-", ["charge", "type", "requires"]].tolist() == [-1, "adduct", "acid;sodium"]
-    assert t.loc["acid [M-3H]3-", "mz"] == pytest.approx((m - 3 * h + 3 * e) / 3, abs=2e-5)
-    assert {"acid [M-3H+2Na]-", "acid [M-3H+Na]2-", "base [M+Na]+", "base [M-H+2Na]+"} <= set(t.index)
+    # the charge setting is the number of protons lost or gained; the charge of an
+    # adduct is that number plus the charges of the attached ions, whatever its sign.
+    # Only total charges of -2, -1, +1 and +2 are followed.
+    acid = set(t.index[t["component"] == "acid"])
+    assert acid == {"acid " + i for i in (
+        "[M-2H]2-", "[M-3H+Na]2-", "[M-H]-", "[M-2H+Na]-", "[M-3H+2Na]-",
+        "[M+Na]+", "[M-H+2Na]+", "[M-2H+3Na]+", "[M+2Na]2+", "[M-H+3Na]2+")}
+    assert "acid [M-3H]3-" not in t.index and "acid [M+3Na]3+" not in t.index
+    assert t.loc["acid [M-3H+Na]2-", "mz"] == pytest.approx((m - 3 * h + na - e + 3 * e) / 2, abs=2e-5)
+    assert {"base [M+H]+", "base [M+Na]+", "base [M+H+Na]2+"} <= set(t.index)
+    assert "base [M-H+2Na]+" not in t.index and "base [M+2H]2+" not in t.index   # it only gains one H+
+    assert set(t.index[t["component"] == "sugar"]) == {"sugar [M+Na]+", "sugar [M+2Na]2+"}
     # two molecules may share protons and carry entered ions; protons and ions do not count as molecules
     assert {"acid + base [M1+M2-H]-", "acid + base [M1+M2+Na]+", "acid + base [M1+M2-2H+Na]-"} <= set(t.index)
     assert t.loc["acid + base [M1+M2-2H+Na]-", "type"] == "pair"
-    # never more than two molecules, nor the same molecule twice
+    # never more than two molecules, nor the same molecule twice; total charge within +/-3
     assert not any(i.count(" + ") > 1 or "acid + acid" in i or "2M" in i for i in t.index)
-    assert t["charge"].abs().max() == 3
-
+    assert set(t["charge"]) == {-2, -1, 1, 2}
 
 @pytest.fixture(scope="module")
 def project(tmp_path_factory):
@@ -74,6 +84,7 @@ def project(tmp_path_factory):
     cfg = make_project(root)
     main(["run", "-c", str(cfg)])
     return root
+
 
 
 def test_end_to_end(project):

@@ -1,16 +1,18 @@
 """Target ion generation from user-entered components.
 
 Rules:
-- Formulas are neutral. The user lists the allowed charge states (-3 to +3).
+- Formulas are neutral. For a molecule, the charge setting (-3 to +3) is the
+  number of protons it can lose or gain; it does not restrict adducts.
 - mode "proton": charge by gain/loss of H+.
 - mode "intrinsic": charge by electron removal/addition only; the component
   also acts as a charge carrier for adducts with proton-mode molecules.
 - Adducts use entered species only. One molecule, or two different molecules,
-  gain or lose up to 3 protons and attach up to 3 entered intrinsic ions
-  (including exchanges such as [M-2H+Na]-). Protons and attached ions do not
-  count as molecules; an ion never holds more than two molecules, nor the
-  same molecule twice. A cation with an anion is also proposed. No default
-  adducts, neutral losses or radical ions.
+  gain or lose protons within their setting and attach up to 3 entered
+  intrinsic ions; the total charge is the sum (e.g. [M-2H+Na]-), kept when it
+  is -2, -1, +1 or +2.
+  Protons and attached ions do not count as molecules; an ion never holds
+  more than two molecules, nor the same molecule twice. A cation with an
+  anion is also proposed. No default adducts, neutral losses or radical ions.
 """
 from __future__ import annotations
 
@@ -119,6 +121,13 @@ def _label(core: str, h: int, ions: Counter, z: int) -> str:
 MAX_MOLECULES = 2     # molecules in one ion (never the same one twice)
 MAX_H = 3             # protons gained or lost
 MAX_ADDUCT_IONS = 3   # entered ions attached
+MAX_CHARGE = 2        # total charge of the ions followed: -2, -1, +1 or +2
+
+
+def proton_range(c: Component) -> tuple[int, int]:
+    """Protons a molecule can lose and gain: from its most negative to its most
+    positive charge setting. The setting says nothing about attached ions."""
+    return min([0, *c.charges]), max([0, *c.charges])
 
 
 def generate_targets(components: list[Component], pairs: bool = True) -> pd.DataFrame:
@@ -138,19 +147,20 @@ def generate_targets(components: list[Component], pairs: bool = True) -> pd.Data
             )
         )
 
-    def with_protons_and_ions(name, core, base, charges, req0, alone):
-        """One or two molecules reach each allowed charge z by gaining or losing
-        h protons and attaching entered ions, cations or anions (not both at once):
-        [M+H]+, [M+Na]+, [M+H+Na]2+, [M-2H+Na]-, [M-H+2Na]+, [M+Cl]-, [M1+M2+Na]+ ..."""
-        for z in charges:
+    def with_protons_and_ions(name, core, base, h_lo, h_hi, req0, alone):
+        """One or two molecules gain or lose h protons, within what their charge
+        settings allow, and attach entered ions (cations or anions, not both at
+        once). The total charge is h plus the charges of the attached ions:
+        [M+H]+, [M+Na]+, [M+H+Na]2+, [M-2H+Na]-, [M-3H+2Na]-, [M+Cl]-, [M1+M2+Na]+ ..."""
+        for h in range(max(h_lo, -MAX_H), min(h_hi, MAX_H) + 1):
             for k in range(MAX_ADDUCT_IONS + 1):
                 for combo in combinations_with_replacement(range(len(carriers)), k):
                     qs = [carriers[i][1] for i in combo]
                     if any(q > 0 for q in qs) and any(q < 0 for q in qs):
                         continue
-                    h = z - sum(qs)
-                    if abs(h) > MAX_H or (k == 0 and h == 0):
-                        continue
+                    z = h + sum(qs)
+                    if z == 0 or abs(z) > MAX_CHARGE:
+                        continue  # neutral: not an ion
                     comp, ions, req = Counter(base), Counter(), set(req0)
                     comp["H"] += h
                     for i in combo:
@@ -167,22 +177,21 @@ def generate_targets(components: list[Component], pairs: bool = True) -> pd.Data
         for z in c.charges:
             add(c.name, "[M]" + _charge_suffix(z), z, c.composition(), {c.name})
     for c in molecules:
-        with_protons_and_ions(c.name, "M", c.composition(), c.charges, {c.name}, alone=True)
+        with_protons_and_ions(c.name, "M", c.composition(), *proton_range(c), {c.name}, alone=True)
     if pairs and MAX_MOLECULES >= 2:
         for i, a in enumerate(molecules):
             for b in molecules[i + 1:]:
-                # charges of the pair: those of either molecule, or the sum of one charge of each
-                charges = set(a.charges) | set(b.charges) | {
-                    za + zb for za in a.charges for zb in b.charges if za * zb > 0 and abs(za + zb) <= 3}
+                # two molecules together can lose or gain the protons of both
+                (alo, ahi), (blo, bhi) = proton_range(a), proton_range(b)
                 with_protons_and_ions(f"{a.name} + {b.name}", "M1+M2", a.composition() + b.composition(),
-                                      sorted(charges), {a.name, b.name}, alone=False)
+                                      alo + blo, ahi + bhi, {a.name, b.name}, alone=False)
         for i, a in enumerate(intrinsic):
             for b in intrinsic[i + 1:]:
                 # cation with anion, when the charges do not cancel: e.g. [Ca+Cl]+
                 for qa in a.charges:
                     for qb in b.charges:
                         z = qa + qb
-                        if qa * qb < 0 and z != 0 and abs(z) <= 3:
+                        if qa * qb < 0 and z != 0 and abs(z) <= MAX_CHARGE:
                             add(f"{a.name} + {b.name}", "[M1+M2]" + _charge_suffix(z), z,
                                 a.composition() + b.composition(), {a.name, b.name}, "pair")
     df = pd.DataFrame(rows)

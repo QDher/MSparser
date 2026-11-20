@@ -38,15 +38,17 @@ def expand_charges(positive: int, negative: int, mode: str) -> list[int]:
 
 def components_editor(path: Path, pairs: bool, key: str, next_step: str = "the Targets tab") -> bool:
     """Editable compound list stored in `path`. Returns True when saved."""
-    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), choose its "
-               "highest positive and negative charge (0 = none), and state what the component is. For a "
-               "molecule, the lower charges are included: +3 means +1, +2 and +3.")
+    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺) and state what "
+               "the component is. For a molecule, the two charge columns say how many H⁺ it can gain and lose "
+               "(0 = none); they do not limit its adducts: the charge of an adduct is the H⁺ gained or lost "
+               "plus the charges of the ions attached. For an ion, they give its charge.")
     st.markdown(
         f"- **{MODE_LABELS['proton']}**: a neutral molecule that is protonated or deprotonated in the source, "
         "e.g. [M+H]⁺, [M−H]⁻.\n"
         f"- **{MODE_LABELS['intrinsic']}**: a species that is an ion by itself (Na, K, NH4, Cl, a quaternary "
         "ammonium…). No H⁺ is added or removed. **Choose this for an ion to obtain its adducts with the "
-        "molecules**: sodium with +1 gives [M+Na]⁺ and [M−2H+Na]⁻; chloride with −1 gives [M+Cl]⁻.\n"
+        "molecules**: sodium with +1 gives [M+Na]⁺, and [M−2H+Na]⁻ for a molecule that can lose two H⁺; chloride "
+        "with −1 gives [M+Cl]⁻.\n"
         "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
         "([M1+M2+H]⁺), or a cation with an anion.")
     def _highest(charges, sign):
@@ -63,13 +65,13 @@ def components_editor(path: Path, pairs: bool, key: str, next_step: str = "the T
             "name": st.column_config.TextColumn("Name", required=True),
             "formula": st.column_config.TextColumn("Neutral formula", required=True),
             "positive": st.column_config.SelectboxColumn(
-                "Positive charge", options=POSITIVE, default="0", required=True,
-                help="Molecule: the highest positive charge it can take; lower ones are included "
-                     "(+3 means +1, +2 and +3). Ion: its charge."),
+                "Positive charge (H⁺ gained)", options=POSITIVE, default="0", required=True,
+                help="Molecule: how many H⁺ it can gain, before any adduct (+3 means 1, 2 or 3). "
+                     "Ion: its charge."),
             "negative": st.column_config.SelectboxColumn(
-                "Negative charge", options=NEGATIVE, default="0", required=True,
-                help="Molecule: the highest negative charge it can take; lower ones are included "
-                     "(−3 means −1, −2 and −3). Ion: its charge."),
+                "Negative charge (H⁺ lost)", options=NEGATIVE, default="0", required=True,
+                help="Molecule: how many H⁺ it can lose, before any adduct (−3 means 1, 2 or 3). "
+                     "Ion: its charge."),
             "mode": st.column_config.SelectboxColumn("The component is a…", options=list(MODE_VALUES),
                                                      default=MODE_LABELS["proton"], required=True, width="medium"),
         })
@@ -80,8 +82,8 @@ def components_editor(path: Path, pairs: bool, key: str, next_step: str = "the T
                 name, mode = str(r["name"]).strip(), MODE_VALUES.get(r.get("mode"), "proton")
                 pos, neg = int(str(r.get("positive") or "0")), int(str(r.get("negative") or "0"))
                 charges = expand_charges(pos, neg, mode)
-                if not charges:
-                    raise ValueError(f"{name}: choose a positive or a negative charge (both are 0)")
+                if not charges and mode == "intrinsic":
+                    raise ValueError(f"{name}: an ion needs a charge (both are 0)")
                 c = Component(name, str(r["formula"]).strip(), tuple(charges), mode)
                 c.composition()  # validates the formula
                 comps.append(c)

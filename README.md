@@ -164,9 +164,15 @@ Add one row per molecule or ion that was injected:
 |---|---|
 | Name | A name of your choice |
 | Neutral formula | The formula without charge: `C8H10N4O2`, `Na` (not `Na+`) |
-| Positive charge | A list: 0, +1, +2 or +3. For a molecule, its highest positive charge; lower ones are included (+3 means +1, +2 and +3). For an ion, its charge |
-| Negative charge | A list: 0, −1, −2 or −3, in the same way |
+| Positive charge (H⁺ gained) | A list: 0, +1, +2 or +3. For a molecule, how many H⁺ it can gain; for an ion, its charge |
+| Negative charge (H⁺ lost) | A list: 0, −1, −2 or −3. For a molecule, how many H⁺ it can lose; for an ion, its charge |
 | The component is a… | *Molecule* or *Ion*, see below |
+
+For a molecule, the two charge columns describe only the protons it can gain
+or lose by itself: −3 means that it can lose one, two or three H⁺. They do
+not limit its adducts (see the rules below). A molecule that neither gains
+nor loses H⁺ is entered with 0 and 0; it is then followed through its adducts
+only.
 
 - **Molecule (gains or loses H⁺):** a neutral molecule that is protonated or
   deprotonated in the source, giving `[M+H]+`, `[M-H]-`, and so on.
@@ -185,9 +191,6 @@ Examples:
 | sodium | `Na` | +1 | 0 | Ion |
 | chloride | `Cl` | 0 | −1 | Ion |
 
-Citric acid with −3 is followed as −1, −2 and −3. Both columns can be set
-for a compound that ionizes in both polarities.
-
 Click **Save components**.
 
 ### The ions followed (both modes)
@@ -196,23 +199,65 @@ From the compounds, the program proposes the ions to follow:
 
 | Type | Content | Examples |
 |---|---|---|
-| `ion` | One compound, charged by protons, or an entered ion itself | `[M+H]+`, `[M-2H]2-`, `Na+` |
+| `ion` | One molecule, charged by protons only, or an entered ion itself | `[M+H]+`, `[M-2H]2-`, `Na+` |
 | `adduct` | One molecule with protons gained or lost and entered ions attached | `[M+Na]+`, `[M+H+Na]2+`, `[M-2H+Na]-`, `[M-H+2Na]+`, `[M+Cl]-` |
 | `pair` | Two different molecules, with protons and entered ions; or a cation with an anion | `[M1+M2+H]+`, `[M1+M2-2H+Na]-`, `[Ca+Cl]+` |
 
-Rules:
+**How the ions of a molecule are built**
 
-- An ion is proposed only if its total charge is one the molecule can take
-  according to its two charge settings. Example: with a positive charge of 0
-  and a negative charge of −1, `[M-H]-` and `[M-2H+Na]-` (total −1) are
-  proposed, but `[M+Na]+` (total +1) and `[M-2H]2-` (total −2) are not. For
-  two molecules, the total can be a charge of either one, or the sum of one
-  charge of each.
+1. The molecule gains or loses H⁺, within the numbers set in its two charge
+   columns. Each H⁺ gained adds +1, each H⁺ lost adds −1.
+2. Entered ions are attached: none, or up to three cations, or up to three
+   anions (not both at once). Each adds its own charge.
+3. The total charge is the sum of the two. The ion is followed when the
+   total is −2, −1, +1 or +2; neutral combinations and higher charges are
+   left out.
+
+The sign of the total does not have to match the charge columns: an acid that
+only loses H⁺ is still followed as `[M+Na]+`.
+
+Example 1: an acid that can lose up to three H⁺ (0 / −3), with sodium (+1)
+entered:
+
+| Total | Ions |
+|---|---|
+| −2 | `[M-2H]2-`, `[M-3H+Na]2-` |
+| −1 | `[M-H]-`, `[M-2H+Na]-`, `[M-3H+2Na]-` |
+| +1 | `[M+Na]+`, `[M-H+2Na]+`, `[M-2H+3Na]+` |
+| +2 | `[M+2Na]2+`, `[M-H+3Na]2+` |
+
+Not followed: `[M-3H]3-` and `[M+3Na]3+` (total ±3), `[M-H+Na]` (neutral).
+
+Example 2: a base that can gain up to three H⁺ (+3 / 0), with chloride (−1)
+entered:
+
+| Total | Ions |
+|---|---|
+| −2 | `[M+2Cl]2-`, `[M+H+3Cl]2-` |
+| −1 | `[M+Cl]-`, `[M+H+2Cl]-`, `[M+2H+3Cl]-` |
+| +1 | `[M+H]+`, `[M+2H+Cl]+`, `[M+3H+2Cl]+` |
+| +2 | `[M+2H]2+`, `[M+3H+Cl]2+` |
+
+Example 3: the same acid (0 / −3) with calcium (+2) entered:
+
+| Total | Ions |
+|---|---|
+| −2 | `[M-2H]2-` |
+| −1 | `[M-H]-`, `[M-3H+Ca]-` |
+| +1 | `[M-H+Ca]+`, `[M-3H+2Ca]+` |
+| +2 | `[M+Ca]2+`, `[M-2H+2Ca]2+` |
+
+Example 4: a molecule that gains or loses no H⁺ (0 / 0), with sodium:
+`[M+Na]+` and `[M+2Na]2+`.
+
+Other rules:
+
 - An ion holds at most two molecules, and never the same molecule twice (no
-  `[2M+H]+`). Protons gained or lost and attached ions do not count as
-  molecules.
-- Up to 3 protons are gained or lost, and up to 3 entered ions attached.
-  Cations and anions are not attached to the same ion.
+  `[2M+H]+`). Protons and attached ions do not count as molecules. Two
+  molecules together can gain or lose the protons of both, and attach ions
+  in the same way: `[M1+M2+H]+`, `[M1+M2-2H+Na]-`.
+- An entered ion is also followed by itself (`Na+`), and a cation with an
+  anion when their charges do not cancel (`[Ca+Cl]+`).
 - Only the species you entered are used. No adduct is proposed with an ion
   that was not entered.
 - Positive ions are followed in positive-mode files, negative ions in
@@ -474,7 +519,8 @@ Using the program is then identical to Windows.
 | *Convert failed: no .raw file in …* | The raw folder is empty or wrong. Check the folder field; the path used is shown in the Run tab |
 | *converter not found* | Put the converter's folder inside the `MSparser` folder, or give its location in the **Converter** panel |
 | *Access denied* (*Accès refusé*) at conversion | The converter setting is not the program file, or Windows blocks it: right-click the `.exe` > **Properties** > **Unblock** |
-| No adduct such as `[M+Na]+` in the ions | The ion must be entered with the type *Ion (already charged)*, and the total charge of the adduct must be among the charges picked for the molecule |
+| No adduct such as `[M+Na]+` in the ions | The ion must be entered with the type *Ion (already charged)* |
+| An expected ion with charge 3 is missing | Only total charges of −2, −1, +1 and +2 are followed |
 | A folder is "skipped" at extraction | It has no compound list: enter one in tab 2, or copy the list of another folder |
 | *Permission denied* when extracting | The program cannot write in the data folder (read-only location). Copy the data to a folder where you can write |
 | An ion is "not detected" | Check its formula and charge, the polarity of the file and the scan range. In the stability mode, see *Detection and flags*; a mass error above the m/z window also gives this result |
