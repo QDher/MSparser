@@ -215,6 +215,9 @@ def write_intensity_outputs(cfg) -> dict:
     cands.to_csv(rep / "intensity_peaks.csv", index=False)
     out["long"].to_csv(rep / "intensity_values.csv", index=False)
     out["matrix"].to_csv(rep / "intensity_matrix.csv", index=False)
+    out["matrix_mz"].to_csv(rep / "intensity_matrix_mz_detected.csv", index=False)
+    out["matrix_ppm"].to_csv(rep / "intensity_matrix_ppm_error.csv", index=False)
+    out["ions"].to_csv(rep / "intensity_ions.csv", index=False)
     files.to_csv(rep / "intensity_files.csv", index=False)
     return dict(candidates=cands, files=files, **out)
 

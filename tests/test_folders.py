@@ -139,3 +139,31 @@ def test_interface(tree):
         assert not at.exception and not at.error, [e.value for e in at.error]
     finally:
         sys.argv = old
+
+
+def test_detected_mz_and_mass_error_are_reported(tree):
+    res = tree / "sub1" / fo.SUB / "results"            # the file with masses 8 ppm too high
+    v = pd.read_csv(res / "intensity_values.csv").set_index("target_id").loc[CAF]
+    assert v["mz_theoretical"] == pytest.approx(195.08765, abs=2e-5)
+    assert v["mz_observed"] == pytest.approx(195.08765 * (1 + 8e-6), abs=1e-4)
+    assert v["ppm_error"] == pytest.approx(8, abs=0.5)
+    cols = list(pd.read_csv(res / "intensity_values.csv").columns)
+    assert cols.index("mz_theoretical") < cols.index("mz_observed") < cols.index("ppm_error") < cols.index("flags")
+    assert pd.read_csv(res / "intensity_matrix_mz_detected.csv").set_index("file").loc["b", CAF] == pytest.approx(v["mz_observed"])
+    assert pd.read_csv(res / "intensity_matrix_ppm_error.csv").set_index("file").loc["b", CAF] == pytest.approx(v["ppm_error"])
+    ions = pd.read_csv(res / "intensity_ions.csv").set_index("target_id")
+    assert ions.loc[CAF, "ppm_error_median"] == pytest.approx(8, abs=0.5) and ions.loc[CAF, "files_detected"] == 1
+    assert ions.loc["caffeine [M+2H]2+", "files_detected"] == 0
+    all_ = tree / fo.SUB / "results_all"
+    mz = pd.read_csv(all_ / "intensity_matrix_mz_detected_all.csv").set_index("file")
+    ppm = pd.read_csv(all_ / "intensity_matrix_ppm_error_all.csv").set_index("file")
+    assert mz.loc["a", CAF] == pytest.approx(195.08765, abs=3e-4) and abs(ppm.loc["a", CAF]) < 1
+
+
+def test_charge_choices():
+    from msparser.ui_shared import expand_charges
+
+    assert expand_charges(3, 0, "proton") == [1, 2, 3]          # a molecule takes the lower charges too
+    assert expand_charges(1, -2, "proton") == [1, -1, -2]
+    assert expand_charges(0, 0, "proton") == []
+    assert expand_charges(2, 0, "intrinsic") == [2]             # an ion has exactly its charge

@@ -224,13 +224,21 @@ def combine(root: Path, folders: list[Path]) -> dict:
     long = pd.concat(longs, ignore_index=True)
     allf = pd.concat(files, ignore_index=True) if files else pd.DataFrame()
     det = long[long["status"] == "detected"]
-    matrix = det.pivot_table(index=["data_folder", "file"], columns="target_id", values="intensity", aggfunc="first")
     every = long[["data_folder", "file"]].drop_duplicates()
     if len(allf):
         every = pd.concat([every, allf[["data_folder", "file"]]]).drop_duplicates()
-    matrix = every.merge(matrix.reset_index(), on=["data_folder", "file"], how="left").sort_values(["data_folder", "file"])
+
+    def wide(col):
+        m = det.pivot_table(index=["data_folder", "file"], columns="target_id", values=col, aggfunc="first")
+        return every.merge(m.reset_index(), on=["data_folder", "file"], how="left").sort_values(["data_folder", "file"])
+
+    matrix = wide("intensity")
+    first = ["data_folder", "file", "target_id", "status", "intensity", "mz_theoretical", "mz_observed", "ppm_error"]
+    long = long[[c for c in first if c in long] + [c for c in long.columns if c not in first]]
     long.to_csv(out / "intensity_values_all.csv", index=False)
     matrix.to_csv(out / "intensity_matrix_all.csv", index=False)
+    wide("mz_observed").to_csv(out / "intensity_matrix_mz_detected_all.csv", index=False)
+    wide("ppm_error").to_csv(out / "intensity_matrix_ppm_error_all.csv", index=False)
     if len(allf):
         allf.to_csv(out / "intensity_files_all.csv", index=False)
     return dict(long=long, matrix=matrix, files=allf)

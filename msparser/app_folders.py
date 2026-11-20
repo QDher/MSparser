@@ -32,11 +32,13 @@ FLAG_HELP = {
     "saturated": "intensity at the saturation level",
     "short_acquisition": "too few scans per window; all scans of the acquisition used",
 }
+VIEWS = {"Intensity": ("", "%.3e"), "m/z detected": ("_mz_detected", "%.5f"), "Mass error (ppm)": ("_ppm_error", "%.2f")}
 NUM = {"intensity": st.column_config.NumberColumn(format="%.3e"),
+       "mz_theoretical": st.column_config.NumberColumn("m/z theoretical", format="%.5f"),
        "rsd_pct": st.column_config.NumberColumn("RSD %", format="%.1f"),
        "window_variation_pct": st.column_config.NumberColumn("variation %", format="%.0f"),
        "ppm_error": st.column_config.NumberColumn(format="%.2f"),
-       "mz_observed": st.column_config.NumberColumn(format="%.5f")}
+       "mz_observed": st.column_config.NumberColumn("m/z detected", format="%.5f")}
 
 
 def _load(path: Path) -> pd.DataFrame:
@@ -283,19 +285,24 @@ def _results_all(root: Path, done: list[Path]) -> None:
     pick_i = fl[1].multiselect("Ions", ions, default=ions, key="all_ions")
     layout = fl[2].radio("Layout", ["files × ions", "one row per value"], key="all_layout")
     if layout == "files × ions":
+        view = st.radio("Values shown", list(VIEWS), horizontal=True, key="all_view")
+        suffix, fmt = VIEWS[view]
+        matrix = _load(out / f"intensity_matrix{suffix}_all.csv") if suffix else matrix
         mx = matrix[matrix["data_folder"].isin(pick_f)][["data_folder", "file"] + [c for c in pick_i if c in matrix]]
         st.dataframe(mx, hide_index=True, width="stretch",
-                     column_config={c: st.column_config.NumberColumn(format="%.3e") for c in pick_i})
+                     column_config={c: st.column_config.NumberColumn(format=fmt) for c in pick_i})
         st.caption("Empty cell: ion not detected in that file, or not in the ion list of that folder.")
-        st.download_button("Download this table (.csv)", mx.to_csv(index=False), "intensity_matrix_all.csv", "text/csv")
+        st.download_button("Download this table (.csv)", mx.to_csv(index=False),
+                           f"intensity_matrix{suffix}_all.csv", "text/csv")
     else:
         only = st.checkbox("Only flagged values", key="all_only")
         lv = values[values["data_folder"].isin(pick_f)
                     & (values["target_id"].isin(pick_i) | (values["status"] != "detected"))]
         if only:
             lv = lv[lv["flags"] != ""]
-        show = ["data_folder", "file", "target_id", "status", "intensity", "flags", "rsd_pct", "window_variation_pct",
-                "mz_window_ppm", "ppm_error", "mz_observed", "window_start_s", "window_end_s", "selected_by"]
+        show = ["data_folder", "file", "target_id", "status", "intensity", "mz_theoretical", "mz_observed",
+                "ppm_error", "flags", "rsd_pct", "window_variation_pct", "mz_window_ppm", "window_start_s",
+                "window_end_s", "selected_by"]
         st.dataframe(lv[[c for c in show if c in lv]], hide_index=True, width="stretch", column_config=NUM)
         st.download_button("Download this table (.csv)", lv.to_csv(index=False), "intensity_values_all.csv", "text/csv")
     with st.expander("Meaning of the flags"):
@@ -330,25 +337,40 @@ def _results_unit(u: Path, name: str, settings: dict, save, root: Path, done: li
     pick_i = fl[0].multiselect("Ions", ions, default=ions, key=f"ions_{key}")
     layout = fl[1].radio("Layout", ["files × ions", "one row per value"], key=f"layout_{key}")
     if layout == "files × ions":
+        view = st.radio("Values shown", list(VIEWS), horizontal=True, key=f"view_{key}")
+        suffix, fmt = VIEWS[view]
+        matrix = _load(rep / f"intensity_matrix{suffix}.csv") if suffix else matrix
         mx = matrix[["file"] + [c for c in pick_i if c in matrix]] if len(matrix) else matrix
         st.dataframe(mx, hide_index=True, width="stretch",
-                     column_config={c: st.column_config.NumberColumn(format="%.3e") for c in pick_i})
+                     column_config={c: st.column_config.NumberColumn(format=fmt) for c in pick_i})
         st.caption("Empty cell: ion not detected in that file. Flags are in the 'one row per value' layout.")
-        st.download_button("Download this table (.csv)", mx.to_csv(index=False), "intensity_matrix.csv", "text/csv",
-                           key=f"dl_m_{key}")
+        st.download_button("Download this table (.csv)", mx.to_csv(index=False),
+                           f"intensity_matrix{suffix}.csv", "text/csv", key=f"dl_m_{key}")
     else:
         only = st.checkbox("Only flagged values", key=f"only_{key}")
         lv = values[values["target_id"].isin(pick_i) | (values["status"] != "detected")]
         if only:
             lv = lv[lv["flags"] != ""]
-        show = ["file", "target_id", "status", "intensity", "flags", "rsd_pct", "window_variation_pct",
-                "mz_window_ppm", "ppm_error", "mz_observed", "window_start_s", "window_end_s",
+        show = ["file", "target_id", "status", "intensity", "mz_theoretical", "mz_observed", "ppm_error", "flags",
+                "rsd_pct", "window_variation_pct", "mz_window_ppm", "window_start_s", "window_end_s",
                 "scans_in_window", "selected_by"]
         st.dataframe(lv[[c for c in show if c in lv]], hide_index=True, width="stretch", column_config=NUM)
         st.download_button("Download this table (.csv)", lv.to_csv(index=False), "intensity_values.csv", "text/csv",
                            key=f"dl_v_{key}")
     with st.expander("Meaning of the flags"):
         st.markdown("\n".join(f"- **{k}**: {v}" for k, v in FLAG_HELP.items() if k in FLAGS))
+    ion_tab = _load(rep / "intensity_ions.csv")
+    if len(ion_tab):
+        with st.expander("Per ion: theoretical and detected m/z, mass error"):
+            st.caption("m/z detected is the median m/z of the peak over its scans; the columns below summarise it "
+                       "over the files of this folder. Saved as intensity_ions.csv.")
+            st.dataframe(ion_tab[ion_tab["files_detected"] > 0], hide_index=True, width="stretch", column_config={
+                "mz_theoretical": st.column_config.NumberColumn("m/z theoretical", format="%.5f"),
+                "mz_observed_median": st.column_config.NumberColumn("m/z detected (median)", format="%.5f"),
+                "ppm_error_median": st.column_config.NumberColumn("ppm error (median)", format="%.2f"),
+                "ppm_error_min": st.column_config.NumberColumn("ppm min", format="%.2f"),
+                "ppm_error_max": st.column_config.NumberColumn("ppm max", format="%.2f"),
+                "intensity_median": st.column_config.NumberColumn("intensity (median)", format="%.3e")})
 
     # ----------------------------------------------------- choice of the peak
     st.subheader("Choice of the peak when several are found")

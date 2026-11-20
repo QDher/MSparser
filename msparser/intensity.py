@@ -345,20 +345,39 @@ def apply_selection(cands: pd.DataFrame, selection: pd.DataFrame | None, cfg: di
 
 
 def build_outputs(cands: pd.DataFrame, files: pd.DataFrame) -> dict:
-    """Long table (one row per file and ion) and wide table (files x ions)."""
+    """Long table (one row per file and ion), wide tables (files x ions) of the
+    intensity, of the detected m/z and of the mass error, and a table per ion."""
+    empty = dict(long=pd.DataFrame(), matrix=pd.DataFrame(), matrix_mz=pd.DataFrame(),
+                 matrix_ppm=pd.DataFrame(), ions=pd.DataFrame())
     if cands.empty:
-        return dict(long=pd.DataFrame(), matrix=pd.DataFrame())
+        return empty
     sel = cands[cands["selected"] | (cands["status"] != "detected")].copy()
     flag_cols = [f for f in FLAGS if f in sel]
     sel["flags"] = sel[flag_cols].fillna(False).astype(bool).apply(
         lambda r: "; ".join(f for f in flag_cols if r[f]), axis=1)
     sel = sel.merge(files[["file", "folder", "name"]], on="file", how="left")
-    first = ["folder", "name", "file", "target_id", "status", "intensity", "flags", "rsd_pct", "window_variation_pct",
-             "mz_window_ppm", "ppm_error", "mz_theoretical", "mz_observed", "window_start_s", "window_end_s"]
+    # mz_observed is the m/z detected: the median m/z of the peak over its scans
+    first = ["folder", "name", "file", "target_id", "status", "intensity", "mz_theoretical", "mz_observed",
+             "ppm_error", "flags", "rsd_pct", "window_variation_pct", "mz_window_ppm", "window_start_s", "window_end_s"]
     long = sel[[c for c in first if c in sel] + [c for c in sel.columns if c not in first]]
     long = long.sort_values(["file", "target_id"]).reset_index(drop=True)
     det = long[long["status"] == "detected"]
-    matrix = det.pivot(index="file", columns="target_id", values="intensity")
-    matrix = matrix.reindex(sorted(files["file"])).reset_index()
-    matrix = files[["file", "folder", "name"]].merge(matrix, on="file", how="right")
-    return dict(long=long, matrix=matrix)
+
+    def wide(col):
+        m = det.pivot(index="file", columns="target_id", values=col)
+        m = m.reindex(sorted(files["file"])).reset_index()
+        return files[["file", "folder", "name"]].merge(m, on="file", how="right")
+
+    ions = long.groupby("target_id", sort=True).agg(
+        mz_theoretical=("mz_theoretical", "first"),
+        files_detected=("status", lambda x: int((x == "detected").sum())),
+        files_searched=("status", lambda x: int((x != "out of scan range").sum())),
+    )
+    if len(det):
+        d = det.groupby("target_id").agg(
+            mz_observed_median=("mz_observed", "median"), ppm_error_median=("ppm_error", "median"),
+            ppm_error_min=("ppm_error", "min"), ppm_error_max=("ppm_error", "max"),
+            intensity_median=("intensity", "median"))
+        ions = ions.join(d)
+    return dict(long=long, matrix=wide("intensity"), matrix_mz=wide("mz_observed"),
+                matrix_ppm=wide("ppm_error"), ions=ions.reset_index())

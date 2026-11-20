@@ -164,7 +164,8 @@ Add one row per molecule or ion that was injected:
 |---|---|
 | Name | A name of your choice |
 | Neutral formula | The formula without charge: `C8H10N4O2`, `Na` (not `Na+`) |
-| Charges | A list to pick from: every charge state the component can take, from −3 to +3 |
+| Positive charge | A list: 0, +1, +2 or +3. For a molecule, its highest positive charge; lower ones are included (+3 means +1, +2 and +3). For an ion, its charge |
+| Negative charge | A list: 0, −1, −2 or −3, in the same way |
 | The component is a… | *Molecule* or *Ion*, see below |
 
 - **Molecule (gains or loses H⁺):** a neutral molecule that is protonated or
@@ -177,12 +178,15 @@ Add one row per molecule or ion that was injected:
 
 Examples:
 
-| Name | Formula | Charges | Type |
-|---|---|---|---|
-| caffeine | `C8H10N4O2` | +1 | Molecule |
-| citric acid | `C6H8O7` | −1, −2, −3 | Molecule |
-| sodium | `Na` | +1 | Ion |
-| chloride | `Cl` | −1 | Ion |
+| Name | Formula | Positive | Negative | Type |
+|---|---|---|---|---|
+| caffeine | `C8H10N4O2` | +1 | 0 | Molecule |
+| citric acid | `C6H8O7` | 0 | −3 | Molecule |
+| sodium | `Na` | +1 | 0 | Ion |
+| chloride | `Cl` | 0 | −1 | Ion |
+
+Citric acid with −3 is followed as −1, −2 and −3. Both columns can be set
+for a compound that ionizes in both polarities.
 
 Click **Save components**.
 
@@ -198,9 +202,12 @@ From the compounds, the program proposes the ions to follow:
 
 Rules:
 
-- The total charge of an ion must be one of the charges picked for the
-  molecule (for a pair: a charge of either molecule, or the sum of one charge
-  of each).
+- An ion is proposed only if its total charge is one the molecule can take
+  according to its two charge settings. Example: with a positive charge of 0
+  and a negative charge of −1, `[M-H]-` and `[M-2H+Na]-` (total −1) are
+  proposed, but `[M+Na]+` (total +1) and `[M-2H]2-` (total −2) are not. For
+  two molecules, the total can be a charge of either one, or the sum of one
+  charge of each.
 - An ion holds at most two molecules, and never the same molecule twice (no
   `[2M+H]+`). Protons gained or lost and attached ions do not count as
   molecules.
@@ -546,14 +553,21 @@ Intensity extraction, in `<data folder>\MSparser\results` of each folder:
 | File | Content |
 |---|---|
 | `intensity_matrix.csv` | Files as rows, ions as columns, intensities as values |
-| `intensity_values.csv` | One row per file and ion: intensity, flags, RSD, variation, m/z window, mass error, window used; undetected ions are listed with their status |
+| `intensity_matrix_mz_detected.csv` | Same layout, with the m/z detected |
+| `intensity_matrix_ppm_error.csv` | Same layout, with the mass error in ppm |
+| `intensity_values.csv` | One row per file and ion: intensity, theoretical m/z (`mz_theoretical`), m/z detected (`mz_observed`), mass error (`ppm_error`), flags, RSD, variation, m/z window, window used; undetected ions are listed with their status |
+| `intensity_ions.csv` | One row per ion: theoretical m/z, median m/z detected, median and range of the mass error, number of files in which it was detected |
 | `intensity_peaks.csv` | All candidate peaks, with the one selected |
 | `intensity_window_means.csv` | Mean, RSD and slope of each of the six windows of every reported peak |
 | `intensity_files.csv` | Per file: processing status or error, polarity, scan range, scan rate |
 
 And in `<top data folder>\MSparser\results_all`, for all folders together:
-`intensity_matrix_all.csv`, `intensity_values_all.csv` and
+`intensity_matrix_all.csv`, `intensity_matrix_mz_detected_all.csv`,
+`intensity_matrix_ppm_error_all.csv`, `intensity_values_all.csv` and
 `intensity_files_all.csv`, with a `data_folder` column.
+
+The m/z detected is the median m/z of the peak over the scans in which it is
+present. The mass error is (detected − theoretical) / theoretical, in ppm.
 
 ### Files written in the project folder (stability analysis)
 

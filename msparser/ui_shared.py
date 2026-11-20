@@ -14,7 +14,8 @@ from msparser import cli
 from msparser.convert import install_dir, locate_converter
 from msparser.targets import Component, generate_targets, normalize_mode
 
-CHARGES = ["+1", "+2", "+3", "-1", "-2", "-3"]
+POSITIVE = ["0", "+1", "+2", "+3"]
+NEGATIVE = ["0", "-1", "-2", "-3"]
 # labels shown in the interface for the two charge modes stored in components.yaml
 MODE_LABELS = {"proton": "Molecule (gains or loses H⁺)", "intrinsic": "Ion (already charged)"}
 MODE_VALUES = {v: k for k, v in MODE_LABELS.items()}
@@ -26,10 +27,20 @@ def read_components(path: Path) -> list[dict]:
     return (yaml.safe_load(Path(path).read_text()) or {}).get("components", []) or []
 
 
+def expand_charges(positive: int, negative: int, mode: str) -> list[int]:
+    """Charges of a component from the two choices of the interface. A molecule
+    takes every charge up to the chosen one (+3 -> +1, +2, +3); an entered ion
+    has exactly the chosen charge."""
+    if mode == "intrinsic":
+        return [c for c in (positive, negative) if c != 0]
+    return list(range(1, positive + 1)) + list(range(-1, negative - 1, -1))
+
+
 def components_editor(path: Path, pairs: bool, key: str, next_step: str = "the Targets tab") -> bool:
     """Editable compound list stored in `path`. Returns True when saved."""
-    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), choose the "
-               "charge states that are possible in the 'Charges' list, and state what the component is:")
+    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), choose its "
+               "highest positive and negative charge (0 = none), and state what the component is. For a "
+               "molecule, the lower charges are included: +3 means +1, +2 and +3.")
     st.markdown(
         f"- **{MODE_LABELS['proton']}**: a neutral molecule that is protonated or deprotonated in the source, "
         "e.g. [M+H]⁺, [M−H]⁻.\n"
@@ -38,18 +49,27 @@ def components_editor(path: Path, pairs: bool, key: str, next_step: str = "the T
         "molecules**: sodium with +1 gives [M+Na]⁺ and [M−2H+Na]⁻; chloride with −1 gives [M+Cl]⁻.\n"
         "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
         "([M1+M2+H]⁺), or a cation with an anion.")
+    def _highest(charges, sign):
+        vals = [int(c) for c in charges if int(c) * sign > 0]
+        return f"{max(vals, key=abs):+d}" if vals else "0"
+
     rows = [{"name": d["name"], "formula": d["formula"],
-             "charges": [f"{int(c):+d}" for c in d.get("charges", [])],
+             "positive": _highest(d.get("charges", []), 1), "negative": _highest(d.get("charges", []), -1),
              "mode": MODE_LABELS[normalize_mode(d.get("mode", "proton"))]} for d in read_components(path)]
-    comp_df = pd.DataFrame(rows, columns=["name", "formula", "charges", "mode"])
+    comp_df = pd.DataFrame(rows, columns=["name", "formula", "positive", "negative", "mode"])
     edited = st.data_editor(
         comp_df, num_rows="dynamic", width="stretch", key=f"{key}_editor",
         column_config={
             "name": st.column_config.TextColumn("Name", required=True),
             "formula": st.column_config.TextColumn("Neutral formula", required=True),
-            "charges": st.column_config.MultiselectColumn(
-                "Charges", options=CHARGES, default=[], width="medium",
-                help="Pick every charge state the component can take, from −3 to +3"),
+            "positive": st.column_config.SelectboxColumn(
+                "Positive charge", options=POSITIVE, default="0", required=True,
+                help="Molecule: the highest positive charge it can take; lower ones are included "
+                     "(+3 means +1, +2 and +3). Ion: its charge."),
+            "negative": st.column_config.SelectboxColumn(
+                "Negative charge", options=NEGATIVE, default="0", required=True,
+                help="Molecule: the highest negative charge it can take; lower ones are included "
+                     "(−3 means −1, −2 and −3). Ion: its charge."),
             "mode": st.column_config.SelectboxColumn("The component is a…", options=list(MODE_VALUES),
                                                      default=MODE_LABELS["proton"], required=True, width="medium"),
         })
@@ -57,12 +77,11 @@ def components_editor(path: Path, pairs: bool, key: str, next_step: str = "the T
         try:
             out, comps = [], []
             for r in edited.dropna(subset=["name", "formula"]).to_dict("records"):
-                picked = r.get("charges")
-                picked = [] if picked is None else list(picked)
-                charges = sorted({int(str(c)) for c in picked}, key=lambda v: (v < 0, abs(v)))
                 name, mode = str(r["name"]).strip(), MODE_VALUES.get(r.get("mode"), "proton")
+                pos, neg = int(str(r.get("positive") or "0")), int(str(r.get("negative") or "0"))
+                charges = expand_charges(pos, neg, mode)
                 if not charges:
-                    raise ValueError(f"{name}: choose at least one charge")
+                    raise ValueError(f"{name}: choose a positive or a negative charge (both are 0)")
                 c = Component(name, str(r["formula"]).strip(), tuple(charges), mode)
                 c.composition()  # validates the formula
                 comps.append(c)
