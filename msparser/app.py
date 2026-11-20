@@ -27,12 +27,9 @@ from msparser.config import DEFAULTS, _merge, load_config
 from msparser.convert import find_raw, install_dir, locate_converter
 from msparser.detect import load_detected, resolve_resolution, resolve_windows
 from msparser.analyze import manual_window_for
-from msparser.targets import Component, generate_targets, normalize_mode
+from msparser import ui_state
+from msparser.ui_shared import components_editor, converter_panel, targets_editor
 
-CHARGE_COLS = {"+1": 1, "+2": 2, "-1": -1, "-2": -2}
-# labels shown in the interface for the two charge modes stored in components.yaml
-MODE_LABELS = {"proton": "Molecule (gains or loses H⁺)", "intrinsic": "Ion (already charged)"}
-MODE_VALUES = {v: k for k, v in MODE_LABELS.items()}
 GREY, BLUE = "#898781", "#2a78d6"
 
 st.set_page_config(page_title="MSparser", layout="wide")
@@ -50,7 +47,9 @@ def save_cfg(root: Path, cfg: dict):
 
 
 def resolved(root: Path) -> dict:
-    return load_config(root / "config.yaml")
+    cfg = load_config(root / "config.yaml")
+    cfg["mode"] = "stability"  # the project-folder system below is the stability analysis
+    return cfg
 
 
 def parse_numbers(text: str) -> list[float]:
@@ -84,160 +83,43 @@ def run_steps(root: Path, steps):
 
 
 # ------------------------------------------------------------------ sidebar
-default_root = sys.argv[1] if len(sys.argv) > 1 else "."
+# Optional arguments: a folder to open, and the mode ("intensity" or "stability").
+arg_folder = sys.argv[1] if len(sys.argv) > 1 else None
+arg_mode = sys.argv[2] if len(sys.argv) > 2 and sys.argv[2] in ("intensity", "stability") else None
+state = ui_state.load()
 st.sidebar.title("MSparser")
-root = Path(st.sidebar.text_input("Project folder", str(Path(default_root).resolve()))).expanduser()
+MODES = {"intensity": "Intensity extraction", "stability": "Stability analysis"}
+start_mode = arg_mode or state.get("mode") or "intensity"
+mode = st.sidebar.radio("Mode", list(MODES), index=list(MODES).index(start_mode), format_func=MODES.get,
+                        help="Intensity extraction: report the intensity of every possible ion in every file. "
+                             "Stability analysis: find the time window in which the signal is stable.")
+if mode != state.get("mode"):
+    state["mode"] = mode
+    ui_state.save(state)
+
+if mode == "intensity":
+    from msparser import app_folders
+
+    app_folders.render(arg_folder, state)
+    st.stop()
+
+default_root = arg_folder or state.get("project_folder") or str(Path.home() / "MSparser_project")
+root = Path(st.sidebar.text_input("Project folder", str(Path(default_root).expanduser().resolve()),
+                                  help="Holds the settings and results of one stability study.")).expanduser()
 if not root.exists():
     st.sidebar.warning("Folder does not exist.")
     if st.sidebar.button("Create folder"):
         root.mkdir(parents=True)
         st.rerun()
     st.stop()
+if str(root) != state.get("project_folder"):
+    state["project_folder"] = str(root)
+    ui_state.save(state)
 if not (root / "config.yaml").exists():
     save_cfg(root, copy.deepcopy(DEFAULTS))
 cfg = user_cfg(root)
 paths = resolved(root)["paths"]
 work, rep = Path(paths["work_dir"]), Path(paths["report_dir"])
-MODES = {"intensity": "Intensity extraction", "stability": "Stability analysis"}
-mode = st.sidebar.radio("Mode", list(MODES), index=list(MODES).index(cfg.get("mode", "intensity")),
-                        format_func=MODES.get,
-                        help="Intensity extraction: report the intensity of every possible ion in every file. "
-                             "Stability analysis: find the time window in which the signal is stable.")
-if mode != cfg.get("mode", "intensity"):
-    cfg["mode"] = mode
-    save_cfg(root, cfg)
-    st.rerun()
-
-
-# --------------------------------------------------------------- components
-def components_editor(targets_tab: str = "tab 4"):
-    st.caption("Enter every injected molecule or ion as a neutral formula (for example Na, not Na⁺), tick the "
-               "charge states that are possible, and choose what the component is:")
-    st.markdown(
-        f"- **{MODE_LABELS['proton']}**: a neutral molecule that is protonated or deprotonated in the source, "
-        "e.g. [M+H]⁺, [M−H]⁻.\n"
-        f"- **{MODE_LABELS['intrinsic']}**: a species that is an ion by itself (Na, K, NH4, Cl, a quaternary "
-        "ammonium…). No H⁺ is added or removed. **Choose this for an ion to obtain its adducts with the "
-        "molecules**: sodium with +1 gives [M+Na]⁺; chloride with −1 gives [M+Cl]⁻.\n"
-        "- Ions made of two different components are also proposed: two molecules sharing H⁺ "
-        "([M1+M2+H]⁺), or a cation with an anion.")
-    cp = Path(paths["components"])
-    rows = []
-    if cp.exists():
-        for d in (yaml.safe_load(cp.read_text()) or {}).get("components", []):
-            rows.append({"name": d["name"], "formula": d["formula"],
-                         **{k: v in d.get("charges", []) for k, v in CHARGE_COLS.items()},
-                         "mode": MODE_LABELS[normalize_mode(d.get("mode", "proton"))]})
-    comp_df = pd.DataFrame(rows, columns=["name", "formula", *CHARGE_COLS, "mode"])
-    for k in CHARGE_COLS:
-        comp_df[k] = comp_df[k].astype(bool)
-    edited = st.data_editor(
-        comp_df, num_rows="dynamic", width="stretch", key="components_editor",
-        column_config={
-            "name": st.column_config.TextColumn("Name", required=True),
-            "formula": st.column_config.TextColumn("Neutral formula", required=True),
-            **{k: st.column_config.CheckboxColumn(k, default=False) for k in CHARGE_COLS},
-            "mode": st.column_config.SelectboxColumn("The component is a…", options=list(MODE_VALUES),
-                                                     default=MODE_LABELS["proton"], required=True, width="medium"),
-        })
-    if st.button("Save components", type="primary"):
-        try:
-            out, comps = [], []
-            for r in edited.dropna(subset=["name", "formula"]).to_dict("records"):
-                charges = [v for k, v in CHARGE_COLS.items() if r.get(k) is True]
-                name, mode = str(r["name"]).strip(), MODE_VALUES.get(r.get("mode"), "proton")
-                if not charges:
-                    raise ValueError(f"{name}: tick at least one charge state")
-                c = Component(name, str(r["formula"]).strip(), tuple(charges), mode)
-                c.composition()  # validates the formula
-                comps.append(c)
-                out.append({"name": name, "formula": c.formula, "charges": charges, "mode": mode})
-            if len({c.name for c in comps}) != len(comps):
-                raise ValueError("component names must be unique")
-            generate_targets(comps, cfg["targets"]["pairs"])
-            cp.write_text(yaml.safe_dump({"components": out}, sort_keys=False))
-            st.success(f"{len(out)} components saved. Regenerate the targets in {targets_tab}.")
-        except Exception as e:
-            st.error(f"Not saved: {e}")
-
-
-# ------------------------------------------------------------------ targets
-def targets_editor(components_tab: str = "tab 2"):
-    st.caption("Ions proposed from the components. Untick 'use' for ions that should not be followed.")
-    tp = work / "targets.csv"
-    if st.button("Generate targets from components" if not tp.exists()
-                 else "Regenerate targets (discards the current selection)"):
-        run_steps(root, [("Targets", cli.cmd_targets, argparse.Namespace(force=True))])
-    if tp.exists():
-        t = pd.read_csv(tp)
-        t["use"] = t["use"].astype(bool)
-        if "type" in t:
-            n = t["type"].value_counts()
-            st.caption(f"{len(t)} ions: {n.get('ion', 0)} of single components, {n.get('adduct', 0)} adducts of a "
-                       f"molecule with an entered ion, {n.get('pair', 0)} made of two components. Positive ions "
-                       "are followed in positive-mode acquisitions, negative ions in negative-mode ones.")
-            cps = (yaml.safe_load(Path(paths["components"]).read_text()) or {}).get("components", []) \
-                if Path(paths["components"]).exists() else []
-            if cps and not any(normalize_mode(c.get("mode", "proton")) == "intrinsic" for c in cps):
-                st.warning(f"No component is set as '{MODE_LABELS['intrinsic']}', so no adduct with an entered ion "
-                           "(such as [M+Na]⁺) is proposed. If a component is an ion (Na, K, Cl…), set its "
-                           "type to this in the Components tab and regenerate the targets.")
-        t_edit = st.data_editor(
-            t, width="stretch", hide_index=True, key="targets_editor",
-            disabled=[c for c in t.columns if c != "use"],
-            column_order=["use", "type", "component", "ion", "charge", "mz", "iso_mz", "iso_ratio", "requires"],
-            column_config={"mz": st.column_config.NumberColumn("m/z", format="%.5f"),
-                           "iso_mz": st.column_config.NumberColumn("isotope m/z", format="%.5f"),
-                           "iso_ratio": st.column_config.NumberColumn("isotope ratio", format="%.4f"),
-                           "requires": "requires components"})
-        if st.button("Save target selection", type="primary"):
-            t_edit.assign(use=t_edit["use"].astype(int)).to_csv(tp, index=False)
-            st.success(f"{int(t_edit['use'].sum())} of {len(t_edit)} targets selected.")
-
-
-# ---------------------------------------------------------------- converter
-def converter_panel(prefix: str):
-    """Where the raw-file converter is, with its status. Shared by both modes."""
-    rcfg = resolved(root)
-    thermo, msc = locate_converter(rcfg, "thermo_parser"), locate_converter(rcfg, "msconvert")
-    if thermo or msc:
-        label = "Converter found: " + ", ".join(n for n, f in (("ThermoRawFileParser", thermo), ("msconvert", msc)) if f)
-    else:
-        label = "Converter not found — open to set it"
-    with st.expander(label, expanded=not (thermo or msc)):
-        st.markdown(
-            "Raw files are converted by a separate free program: **ThermoRawFileParser** (Thermo) or "
-            "**msconvert** from ProteoWizard (Waters). It is found automatically in either case:\n"
-            f"- its folder is placed inside the folder of this program: `{install_dir()}` "
-            "(for example unzip ThermoRawFileParser there);\n"
-            "- or its location is given below, as the program file or the folder that contains it.")
-        st.write(("✅ ThermoRawFileParser: " + thermo) if thermo else "⬜ ThermoRawFileParser: not found")
-        st.write(("✅ msconvert: " + msc) if msc else "⬜ msconvert: not found (only needed for Waters files)")
-        c1, c2 = st.columns(2)
-        t_in = c1.text_input("ThermoRawFileParser: program or folder", cfg["convert"]["thermo_parser"],
-                             key=f"{prefix}_thermo", help="Example: C:\\Tools\\ThermoRawFileParser. "
-                             "Leave 'ThermoRawFileParser' to search the folder of this program.")
-        m_in = c2.text_input("msconvert: program or folder (Waters)", cfg["convert"]["msconvert"],
-                             key=f"{prefix}_msconvert", help="Example: C:\\Program Files\\ProteoWizard")
-        def _clean(v: str) -> str:
-            v = v.strip()  # a single quoted path loses its quotes; a quoted multi-part command is kept
-            return v[1:-1] if v.count('"') == 2 and v.startswith('"') and v.endswith('"') else v
-
-        new = {"thermo_parser": _clean(t_in) or "ThermoRawFileParser", "msconvert": _clean(m_in) or "msconvert"}
-        if any(new[k] != cfg["convert"][k] for k in new):
-            cfg["convert"].update(new)
-            save_cfg(root, cfg)
-            st.rerun()
-
-
-if mode == "intensity":
-    from msparser import app_intensity
-
-    app_intensity.render(dict(
-        root=root, cfg=cfg, paths=paths, work=work, rep=rep, save_cfg=save_cfg, resolved=resolved,
-        parse_numbers=parse_numbers, components_editor=components_editor, targets_editor=targets_editor,
-        converter_panel=converter_panel))
-    st.stop()
 
 status = {
     "Components": Path(paths["components"]).exists(),
@@ -348,7 +230,7 @@ with tabs[0]:
 
 # --------------------------------------------------------------- components
 with tabs[1]:
-    components_editor()
+    components_editor(Path(paths["components"]), cfg["targets"]["pairs"], "stab_comp", "tab 4")
 
 # ------------------------------------------------------------------ samples
 with tabs[2]:
@@ -412,7 +294,7 @@ with tabs[2]:
 
 # ------------------------------------------------------------------ targets
 with tabs[3]:
-    targets_editor()
+    targets_editor(resolved(root), "stab_tgt")
 
 # ---------------------------------------------------------------------- run
 with tabs[4]:
@@ -421,7 +303,7 @@ with tabs[4]:
         st.warning("Save the components (tab 2) and the samples (tab 3) first.")
     st.caption("Conversion is skipped for files that already have an mzML. If mzML files are already in the data "
                "folder, start at 'Run analysis'.")
-    converter_panel("stab")
+    converter_panel(cfg, lambda: save_cfg(root, cfg), "stab")
     st.caption(f"Raw folder: {paths['raw_dir']} — data folder: {paths['mzml_dir']}")
     b = st.columns(5)
     none = argparse.Namespace(force=False, dry_run=False)

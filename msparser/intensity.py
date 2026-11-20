@@ -266,13 +266,15 @@ def _one(args):
 
 
 # ---------------------------------------------------------------- the batch
-def run_batch(cfg: dict, targets: pd.DataFrame, progress=None) -> dict:
+def run_batch(cfg: dict, targets: pd.DataFrame, progress=None, files: pd.DataFrame | None = None) -> dict:
     """Process every file below the data folder (cached per file) and gather
-    the results. `progress(done, total, file)` is called after each file."""
+    the results. `progress(done, total, file)` is called after each file.
+    `files` replaces the search of the data folder (columns file, folder, name, path)."""
     work = Path(cfg["paths"]["work_dir"])
     cache = work / "intensity_cache"
     cache.mkdir(parents=True, exist_ok=True)
-    files = discover_files(cfg["paths"]["mzml_dir"], cfg["intensity"].get("folders"))
+    if files is None:
+        files = discover_files(cfg["paths"]["mzml_dir"], cfg["intensity"].get("folders"))
     if files.empty:
         raise FileNotFoundError(
             f"no mzML or CSV file found in the selected folders of {cfg['paths']['mzml_dir']}")

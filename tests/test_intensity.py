@@ -133,28 +133,6 @@ def test_cache_reuses_unchanged_files(batch, capsys):
     assert "0 processed, 5 unchanged (reused), 1 failed" in out
 
 
-def test_interface_of_intensity_mode(batch):
-    AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
-    app = Path(__file__).parent.parent / "msparser" / "app.py"
-    old = sys.argv
-    sys.argv = ["app.py", str(batch)]
-    try:
-        at = AppTest.from_file(str(app), default_timeout=180).run()
-        assert not at.exception, [e.value for e in at.exception]
-        assert [t.label for t in at.tabs] == ["1. Components", "2. Files", "3. Targets", "4. Extract", "5. Results"]
-        # no folder is used until the user ticks it
-        assert [b for b in at.button if b.label == "Extract intensities"][0].disabled
-        at = [b for b in at.button if b.label == "Tick all"][0].click().run()
-        assert not at.exception, [e.value for e in at.exception]
-        at = [b for b in at.button if b.label == "Extract intensities"][0].click().run()
-        assert not at.exception and not at.error, [e.value for e in at.error]
-        assert {m.label: m.value for m in at.metric}["Files"] == "6"
-        at = [b for b in at.button if b.label == "Apply the choice of peaks"][0].click().run()
-        assert not at.exception and not at.error
-    finally:
-        sys.argv = old
-
-
 def test_recursive_conversion(tmp_path):
     """Raw files in subfolders are converted into the same folder tree."""
     from msparser.config import load_config
@@ -217,13 +195,3 @@ def test_convert_command_without_arguments(tmp_path, capsys):
     cmd_convert(cfg, None)                       # must not raise
     assert (tmp_path / "mzml" / "one.mzML").exists()
     assert "1 file(s) converted" in capsys.readouterr().out
-
-
-def test_folder_labels(tmp_path):
-    from msparser.app_intensity import _shown
-
-    assert _shown(tmp_path / "raw", tmp_path) == "raw"
-    assert _shown(tmp_path / "raw" / "day1", tmp_path) == str(Path("raw") / "day1")
-    assert _shown(tmp_path, tmp_path) == "(project folder)"
-    outside = tmp_path.parent / "elsewhere"
-    assert _shown(outside, tmp_path) == str(outside)

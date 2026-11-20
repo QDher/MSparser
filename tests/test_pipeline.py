@@ -45,6 +45,27 @@ def test_target_rules():
     assert t.loc["caffeine [M+H]+", "iso_ratio"] == pytest.approx(8 * 0.0107 / 0.9893, rel=1e-6)
 
 
+def test_proton_exchange_and_charges_up_to_three():
+    comps = [
+        Component("acid", "C6H8O7", (-1, -2, -3), "proton"),
+        Component("base", "C8H10N4O2", (1,), "proton"),
+        Component("sodium", "Na", (1,), "intrinsic"),
+    ]
+    t = generate_targets(comps).set_index("target_id")
+    m, h, na, e = 192.027003, 1.00782503, 22.98976928, 0.00054858
+    # two protons removed and one sodium added: total charge -1
+    assert t.loc["acid [M-2H+Na]-", "mz"] == pytest.approx(m - 2 * h + na - e + 2 * e, abs=2e-5)
+    assert t.loc["acid [M-2H+Na]-", ["charge", "type", "requires"]].tolist() == [-1, "adduct", "acid;sodium"]
+    assert t.loc["acid [M-3H]3-", "mz"] == pytest.approx((m - 3 * h + 3 * e) / 3, abs=2e-5)
+    assert {"acid [M-3H+2Na]-", "acid [M-3H+Na]2-", "base [M+Na]+", "base [M-H+2Na]+"} <= set(t.index)
+    # two molecules may share protons and carry entered ions; protons and ions do not count as molecules
+    assert {"acid + base [M1+M2-H]-", "acid + base [M1+M2+Na]+", "acid + base [M1+M2-2H+Na]-"} <= set(t.index)
+    assert t.loc["acid + base [M1+M2-2H+Na]-", "type"] == "pair"
+    # never more than two molecules, nor the same molecule twice
+    assert not any(i.count(" + ") > 1 or "acid + acid" in i or "2M" in i for i in t.index)
+    assert t["charge"].abs().max() == 3
+
+
 @pytest.fixture(scope="module")
 def project(tmp_path_factory):
     from synth import make_project
@@ -308,7 +329,7 @@ def test_no_stable_window_and_few_traces(project, tmp_path):
 
 
 def test_app_starts(tmp_path):
-    """The interface loads on an empty project without raising, in both modes."""
+    """The interface loads on an empty folder without raising, in both modes."""
     AppTest = pytest.importorskip("streamlit.testing.v1").AppTest
     app = Path(__file__).parent.parent / "msparser" / "app.py"
     old = sys.argv
@@ -316,12 +337,13 @@ def test_app_starts(tmp_path):
     try:
         at = AppTest.from_file(str(app), default_timeout=120).run()
         assert not at.exception, [e.value for e in at.exception]
-        # a new project opens in the intensity-extraction mode
-        assert [t.label for t in at.tabs][:2] == ["1. Components", "2. Files"]
+        # the program opens in the intensity-extraction mode, on a data folder
         assert [r for r in at.radio if r.label == "Mode"][0].options[0] == "Intensity extraction"
-        # the stability mode is one click away
+        assert any(t.label == "Data folder" for t in at.text_input)
+        # the stability mode is one click away and works on a project folder
         at = [r for r in at.radio if r.label == "Mode"][0].set_value("stability").run()
         assert not at.exception, [e.value for e in at.exception]
+        assert any(t.label == "Project folder" for t in at.text_input)
         assert any(t.label == "Folder containing the raw files" for t in at.text_input)
     finally:
         sys.argv = old

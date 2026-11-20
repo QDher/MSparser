@@ -219,8 +219,9 @@ def write_intensity_outputs(cfg) -> dict:
     return dict(candidates=cands, files=files, **out)
 
 
-def cmd_intensity(cfg, args=None, progress=None):
-    """Intensity extraction: every target ion in every file below the data folder."""
+def cmd_intensity(cfg, args=None, progress=None, files=None):
+    """Intensity extraction: every target ion in every file below the data folder
+    (or in the given `files`)."""
     from . import intensity as it
 
     work, rep = _work(cfg), Path(cfg["paths"]["report_dir"])
@@ -229,7 +230,7 @@ def cmd_intensity(cfg, args=None, progress=None):
     if not (work / "targets.csv").exists():
         cmd_targets(cfg)
     targets = pd.read_csv(work / "targets.csv")
-    res = it.run_batch(cfg, targets, progress)
+    res = it.run_batch(cfg, targets, progress, files)
     res["candidates"].to_parquet(work / "intensity_candidates.parquet", index=False)
     res["files"].to_parquet(work / "intensity_files.parquet", index=False)
     res["traces"].to_parquet(work / "intensity_traces.parquet", index=False)
@@ -248,6 +249,29 @@ def cmd_intensity(cfg, args=None, progress=None):
               f"{int((det['flags'] != '').sum())} flagged; "
               f"{int((long['status'] == 'not detected').sum())} not detected")
     print(f"tables written to {rep}")
+
+
+def cmd_folder(args):
+    """Intensity extraction of a data folder (and its subfolders): each folder
+    keeps its converted files, compound list, settings and results in its own
+    MSparser subfolder."""
+    from . import folders as fo
+
+    root = Path(args.folder).resolve()
+    units = fo.find_units(root, not args.no_subfolders)
+    if not units:
+        raise SystemExit(f"no raw, mzML or CSV file found in {root}")
+    settings = fo.load_settings(root)
+    if args.components:  # one compound list for every folder
+        for u in units:
+            (u / fo.SUB).mkdir(parents=True, exist_ok=True)
+            (u / fo.SUB / "components.yaml").write_text(Path(args.components).read_text())
+    res = fo.run_all(root, units, settings, convert=not args.no_convert,
+                     progress=lambda i, n, f, j, m, name: print(f"[{i}/{n}] {fo.label(f, root)}") if j == 0 else None)
+    for r in res.itertuples(index=False):
+        print(f"{r.data_folder}: {r.status}" + (f" ({r.message})" if r.message else "")
+              + (f" - {r.files} file(s), {r.values} value(s), {r.flagged} flagged" if r.status == "done" else ""))
+    print(f"combined tables: {root / fo.SUB / 'results_all'}")
 
 
 def cmd_run(cfg, args=None):
@@ -286,11 +310,18 @@ def main(argv=None):
             s.add_argument("--jobs", type=int, default=None, help="parallel processes")
         if name == "targets":
             s.add_argument("--force", action="store_true", help="overwrite targets.csv")
+    f = sub.add_parser("folder", help="intensity extraction of a data folder and its subfolders")
+    f.add_argument("folder")
+    f.add_argument("--no-subfolders", action="store_true")
+    f.add_argument("--no-convert", action="store_true", help="use the files already converted")
+    f.add_argument("--components", help="compound list (YAML) copied to every folder")
     u = sub.add_parser("ui", help="graphical interface in the browser (needs streamlit)")
     u.add_argument("project", nargs="?", default=".", help="project folder")
     args = p.parse_args(argv)
     if args.cmd == "ui":
         return cmd_ui(args)
+    if args.cmd == "folder":
+        return cmd_folder(args)
     args.fn(load_config(args.config), args)
 
 

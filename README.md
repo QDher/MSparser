@@ -99,9 +99,10 @@ MSparser\
 ```
 
 Otherwise, give its location in the program: open the **Converter** panel
-(stability mode: tab **5. Run**; intensity mode: tab **2. Files**) and enter
+(intensity mode: tab **1. Folders**; stability mode: tab **5. Run**) and enter
 the program file or the folder that contains it, for example
-`C:\Tools\ThermoRawFileParser`. This is saved per project.
+`C:\Tools\ThermoRawFileParser`. This is saved with the settings of the data
+folder or project.
 
 The panel shows whether the converter was found and where. Tip: in File
 Explorer, hold Shift, right-click the folder or the `.exe`, and choose
@@ -116,38 +117,54 @@ If your files are already in mzML format, no converter is needed.
 
 ## Using the program
 
-### Project folder
-
-The field at the top of the left panel is the **project folder**. It holds
-the settings and the results of one study, not the data:
-
-| In the project folder | Elsewhere, wherever you keep it |
-|---|---|
-| Settings, list of components, list of ions | The raw files |
-| Intermediate files (`work`) | The converted mzML files |
-| Result tables and figures (`report`) | |
-
-By default it is `MSparser_project` in your user folder. A project made with a
-version named *mzstab* is in `mzstab_project`; type that folder in the field
-to reopen it. To start another
-study, type another folder name; it is created if needed. Your data is never
-moved or copied: you indicate its folder inside the program.
-
 ### Choosing the mode
 
-Below the project folder, **Mode** switches between *Intensity extraction*
-(selected in a new project) and *Stability analysis*. Each mode has its own tabs, to be followed from left
-to right. The list under the mode shows which steps are complete.
+At the top of the left panel, **Mode** switches between *Intensity
+extraction* (selected at first start) and *Stability analysis*. Each mode has
+its own tabs, to be followed from left to right.
 
-### Entering the components (both modes)
+### Where your data is, and where the program writes
 
-In the **Components** tab, add one row per molecule or ion that was injected:
+**Intensity extraction** works directly in your data folders. In the left
+panel, give the **Data folder** that holds your acquisitions and tick
+**Include subfolders** to process its subfolders as well. In every folder
+that holds acquisitions, the program creates one subfolder named `MSparser`
+and writes everything there:
+
+```
+C:\example_data\root\
+  sample1.RAW
+  sample2.RAW
+  MSparser\                    <- created by the program
+    mzml\                      converted files
+    components.yaml            compound list of this folder
+    config.yaml                settings used
+    work\                      ion list and intermediate files
+    results\                   intensity tables of this folder
+    results_all\               tables combining root and its subfolders
+  subfolder\
+    sample3.RAW
+    MSparser\                  the same, for this subfolder
+```
+
+Your raw files are not moved or modified. Deleting an `MSparser` folder
+removes everything the program made for that folder. Recently used folders
+are offered in the left panel.
+
+**Stability analysis** uses a **project folder** instead, which holds the
+settings and results of one study; the folders of the raw and converted
+files are indicated inside the program. By default it is `MSparser_project`
+in your user folder.
+
+### Entering the compounds (both modes)
+
+Add one row per molecule or ion that was injected:
 
 | Column | What to enter |
 |---|---|
 | Name | A name of your choice |
 | Neutral formula | The formula without charge: `C8H10N4O2`, `Na` (not `Na+`) |
-| +1, +2, −1, −2 | Tick the charge states that are possible |
+| Charges | A list to pick from: every charge state the component can take, from −3 to +3 |
 | The component is a… | *Molecule* or *Ion*, see below |
 
 - **Molecule (gains or loses H⁺):** a neutral molecule that is protonated or
@@ -155,40 +172,48 @@ In the **Components** tab, add one row per molecule or ion that was injected:
 - **Ion (already charged):** a species that is an ion by itself, such as Na,
   K, NH4, Cl, formate or a quaternary ammonium. No H⁺ is added or removed.
   **Choose this type for an ion to obtain its adducts with the molecules:**
-  sodium with +1 gives `[M+Na]+`; chloride with −1 gives `[M+Cl]-`.
+  sodium with +1 gives `[M+Na]+` and `[M-2H+Na]-`; chloride with −1 gives
+  `[M+Cl]-`.
 
 Examples:
 
-| Name | Formula | Tick | Type |
+| Name | Formula | Charges | Type |
 |---|---|---|---|
 | caffeine | `C8H10N4O2` | +1 | Molecule |
+| citric acid | `C6H8O7` | −1, −2, −3 | Molecule |
 | sodium | `Na` | +1 | Ion |
 | chloride | `Cl` | −1 | Ion |
-| formate | `CHO2` | −1 | Ion |
 
 Click **Save components**.
 
 ### The ions followed (both modes)
 
-In the **Targets** tab, click **Generate targets**. The program proposes
-three types of ions:
+From the compounds, the program proposes the ions to follow:
 
-| Type | Content | Example |
+| Type | Content | Examples |
 |---|---|---|
-| `ion` | One component, charged | `[M+H]+`, `Na+` |
-| `adduct` | A molecule with one or two entered ions | `[M+Na]+`, `[M+H+Na]2+`, `[M+Cl]-` |
-| `pair` | Two different components | `[M1+M2+H]+`, a cation with an anion such as `[Ca+Cl]+` |
+| `ion` | One compound, charged by protons, or an entered ion itself | `[M+H]+`, `[M-2H]2-`, `Na+` |
+| `adduct` | One molecule with protons gained or lost and entered ions attached | `[M+Na]+`, `[M+H+Na]2+`, `[M-2H+Na]-`, `[M-H+2Na]+`, `[M+Cl]-` |
+| `pair` | Two different molecules, with protons and entered ions; or a cation with an anion | `[M1+M2+H]+`, `[M1+M2-2H+Na]-`, `[Ca+Cl]+` |
 
-Untick **use** for the ions you do not want, then click **Save target
-selection**.
+Rules:
 
-- Positive ions are followed in positive-mode files, negative ions in
-  negative-mode files. The polarity is read from each file.
+- The total charge of an ion must be one of the charges picked for the
+  molecule (for a pair: a charge of either molecule, or the sum of one charge
+  of each).
+- An ion holds at most two molecules, and never the same molecule twice (no
+  `[2M+H]+`). Protons gained or lost and attached ions do not count as
+  molecules.
+- Up to 3 protons are gained or lost, and up to 3 entered ions attached.
+  Cations and anions are not attached to the same ion.
 - Only the species you entered are used. No adduct is proposed with an ion
   that was not entered.
-- A component is not combined with itself (no `[2M+H]+`), and ions made of
-  three or more components are not proposed.
-- After changing the components, generate the targets again.
+- Positive ions are followed in positive-mode files, negative ions in
+  negative-mode files. The polarity is read from each file.
+
+The list can be long. In the ions tab, untick **use** for the ions you do not
+want, then save the selection. After changing the compounds, the ions are
+generated again.
 
 ---
 
@@ -200,28 +225,34 @@ many files (up to about a hundred) organised in folders.
 
 | Tab | What to do |
 |---|---|
-| **1. Components** | Enter the molecules and ions (see above). |
-| **2. Files** | Indicate the main folders and tick the folders to use (see below). |
-| **3. Targets** | Generate and review the ions (see above). |
-| **4. Extract** | Click **Extract intensities**. |
-| **5. Results** | Read and download the intensities (see below). |
+| **1. Folders** | Check the folders found, untick those to leave out, and check the converter. |
+| **2. Compounds** | Enter the compound list of each folder. |
+| **3. Ions** | Optional: review the ions of each folder and untick some. |
+| **4. Convert and extract** | Click **Convert and extract**. |
+| **5. Results** | Read and download the intensities, for all folders or one. |
 
-### Files tab: choosing the folders
+### Folders
 
-1. **Folder containing the raw files:** the top folder of your data. Its
-   subfolders, at any depth, are found automatically.
-2. **Folder for the converted files:** where the mzML files are written. The
-   folder tree of the raw files is reproduced there.
-3. In the table **Folders to use**, tick the folders wanted. Each row shows
-   a raw folder and its converted counterpart, written from the project
-   folder (or as full paths when outside it), with their numbers of files.
-4. Check the **Converter** panel, then click **Convert the raw files of the
-   ticked folders**.
+After the data folder is given in the left panel, tab 1 lists every folder
+that holds acquisitions (raw, mzML or CSV files), with its numbers of files
+and compounds. Untick **use** to leave a folder out. Each folder is processed
+on its own and keeps its own files (see above).
 
-- Nothing is used until it is ticked. *Tick all* selects everything.
-- A ticked folder does not include its subfolders; tick each one wanted.
-- Every file of a ticked folder is used. The same components apply to all
-  files.
+### Compound lists
+
+Each folder has its own compound list. In tab 2, choose a folder, enter its
+compounds and save. **Copy this list to the other folders** gives the same
+list to all of them; lists can then be changed folder by folder. A folder
+without a compound list is skipped at extraction.
+
+### Convert and extract
+
+**Convert and extract** converts the raw files not yet converted, generates
+the ions of each folder, and extracts the intensities. **Extract only** skips
+the conversion. A table then gives, per folder, the outcome and the numbers
+of files and values. Files already processed with the same settings and ions
+are reused, so running again after adding files only processes the new ones.
+The settings of tab 4 apply to all folders.
 
 ### How an intensity is obtained
 
@@ -256,15 +287,15 @@ The numbers in steps 1, 2 and 4 can be changed in the **Extract** tab.
 
 ### Results tab
 
-| Section | Content |
-|---|---|
-| **Intensity table** | *files × ions*: one row per file, one column per ion. *One row per value*: with flags, RSD, variation, m/z window, mass error. Filters by folder and ion; download button |
-| **Choice of the peak** | When several peaks were found: a general rule (closest, or most intense) and a table to tick the peak to export for single ions and files |
-| **Detail of one ion in one file** | The signal over the acquisition with the window used, and the mean of each of the six windows |
+Choose **All folders** or one folder.
 
-Files already processed with the same settings are reused, so adding files
-and extracting again only processes the new ones. A file that cannot be read
-is listed with its error and does not stop the others.
+| Scope | Content |
+|---|---|
+| **All folders** | The combined intensity table (*files × ions*, or *one row per value* with flags), with filters by folder and ion, and a download button |
+| **One folder** | Its intensity table; the **choice of the peak** when several peaks were found (a general rule, closest or most intense, and a table to tick the peak to export for single ions and files); the **detail of one ion in one file** (signal over the acquisition with the window used, and the mean of each of the six windows) |
+
+A file that cannot be read is listed with its error and does not stop the
+others.
 
 ---
 
@@ -436,11 +467,13 @@ Using the program is then identical to Windows.
 | *Convert failed: no .raw file in …* | The raw folder is empty or wrong. Check the folder field; the path used is shown in the Run tab |
 | *converter not found* | Put the converter's folder inside the `MSparser` folder, or give its location in the **Converter** panel |
 | *Access denied* (*Accès refusé*) at conversion | The converter setting is not the program file, or Windows blocks it: right-click the `.exe` > **Properties** > **Unblock** |
-| No adduct such as `[M+Na]+` in the targets | The ion must be entered with the type *Ion (already charged)*; then generate the targets again |
+| No adduct such as `[M+Na]+` in the ions | The ion must be entered with the type *Ion (already charged)*, and the total charge of the adduct must be among the charges picked for the molecule |
+| A folder is "skipped" at extraction | It has no compound list: enter one in tab 2, or copy the list of another folder |
+| *Permission denied* when extracting | The program cannot write in the data folder (read-only location). Copy the data to a folder where you can write |
 | An ion is "not detected" | Check its formula and charge, the polarity of the file and the scan range. In the stability mode, see *Detection and flags*; a mass error above the m/z window also gives this result |
 | An ion is "out of scan range" | Its m/z is outside the range acquired, for example Na⁺ at m/z 23. Its adducts are still followed |
 | "No stable window" for every trace | The stability limits are too strict for the data, or the signal drifts. Adjust the limits in the Results tab |
-| Results look outdated after changing a setting | Run the analysis or extraction again; in the Targets tab, regenerate the targets after changing components |
+| Results look outdated after changing a setting | Run the analysis or extraction again. In the stability mode, regenerate the targets after changing components |
 
 If a step fails, the message shown in the program states the reason. Include
 it, or a screenshot, when reporting a problem.
@@ -508,7 +541,7 @@ Stability analysis:
 | `settings_used.json` | The settings used by the run |
 | `*.png`, `traces_ppm*/` | Figures |
 
-Intensity extraction:
+Intensity extraction, in `<data folder>\MSparser\results` of each folder:
 
 | File | Content |
 |---|---|
@@ -516,9 +549,13 @@ Intensity extraction:
 | `intensity_values.csv` | One row per file and ion: intensity, flags, RSD, variation, m/z window, mass error, window used; undetected ions are listed with their status |
 | `intensity_peaks.csv` | All candidate peaks, with the one selected |
 | `intensity_window_means.csv` | Mean, RSD and slope of each of the six windows of every reported peak |
-| `intensity_files.csv` | Per file: folder, processing status or error, polarity, scan range, scan rate |
+| `intensity_files.csv` | Per file: processing status or error, polarity, scan range, scan rate |
 
-### Files written in the project folder
+And in `<top data folder>\MSparser\results_all`, for all folders together:
+`intensity_matrix_all.csv`, `intensity_values_all.csv` and
+`intensity_files_all.csv`, with a `data_folder` column.
+
+### Files written in the project folder (stability analysis)
 
 The program records the inputs of a run in plain-text files. They do not
 need to be edited by hand.
@@ -576,15 +613,26 @@ msparser run -c config.yaml
 ```
 
 ```bash
+msparser folder C:\example_data\root --components compounds.yaml
+```
+
+```bash
 msparser intensity -c config.yaml --jobs 4
 ```
 
-`run` executes the stability analysis (`targets` if no table exists, then
-`ingest`, `extract`, `analyze`; each can be called separately). `intensity`
-runs the intensity extraction and needs `mode: intensity` in the
-configuration for recursive conversion; `--jobs` processes files in
-parallel. `convert --dry-run` prints the converter commands without running
-them. `msparser ui <project>` starts the interface.
+- `run` executes the stability analysis on a project folder (`targets` if no
+  table exists, then `ingest`, `extract`, `analyze`; each can be called
+  separately).
+- `folder` runs the intensity extraction on a data folder and its subfolders,
+  as the interface does: each folder gets its `MSparser` subfolder.
+  `--components` copies one compound list to every folder; without it, each
+  folder uses the list already in its `MSparser` subfolder. `--no-subfolders`
+  and `--no-convert` are available.
+- `intensity` runs the intensity extraction on one configuration file, for
+  example `<folder>/MSparser/config.yaml`, to process a single folder;
+  `--jobs` processes files in parallel.
+- `convert --dry-run` prints the converter commands without running them.
+- `msparser ui [folder]` starts the interface.
 
 In `components.yaml`, the two component types are stored as `mode: proton`
 (molecule) and `mode: intrinsic` (ion); `molecule` and `ion` are accepted.
@@ -645,10 +693,14 @@ macOS build has obtained a runner.
   describe the signal, not why it changes.
 - Ions formed with species that were not entered (for example sodium from
   glassware) are not followed.
-- Ions combining charge carriers of opposite sign (for example
-  `[M-2H+Na]-`), a component with itself, or three or more components are not
-  generated.
+- Not generated: ions with a cation and an anion attached to the same
+  molecule, a molecule combined with itself, ions of three or more molecules,
+  neutral losses and radical ions.
+- The ion list can be long, since every combination allowed by the rules is
+  proposed; many of these ions will not exist in a given sample.
 - Stability mode: with few traces, the limits derived from the data are not
   reliable; the program warns and the limits can be set by hand.
-- Intensity mode: the same components apply to all files; files are
+- Intensity mode: the program needs permission to write in the data folders;
+  within a folder the same compound list applies to all files; files are
   processed one after another in the application.
+- The stability mode still uses a separate project folder.
